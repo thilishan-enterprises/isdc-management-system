@@ -68,7 +68,7 @@ export function AppHeader({ username, role }: AppHeaderProps) {
       <Separator orientation="vertical" className="mr-1 h-5" />
 
       <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <h1 className="truncate text-sm font-semibold tracking-tight">
+        <h1 className="truncate text-lg font-semibold tracking-tight">
           {pageTitle}
         </h1>
         <p className="hidden text-xs text-muted-foreground sm:block">

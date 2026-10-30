@@ -36,10 +36,10 @@ export function AppSidebar({ role, username }: AppSidebarProps) {
 
           <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate font-semibold tracking-tight">
-              Installment Manager
+              ISDC Manager
             </span>
             <span className="truncate text-xs text-muted-foreground">
-              Business Operations
+              Dashboard
             </span>
           </div>
         </div>
