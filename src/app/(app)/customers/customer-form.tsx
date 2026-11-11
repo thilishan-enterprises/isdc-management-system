@@ -6,7 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { SquarePlus, ShoppingBag, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  CalendarDays,
+  CheckCircle2,
+  Package,
+  CirclePlus,
+  ReceiptText,
+  ShoppingBag,
+  Trash2,
+  UserRound,
+  Wallet,
+} from "lucide-react";
 
 type ProductBrandOption = {
   id: string;
@@ -50,68 +61,13 @@ type CustomerFormProps = {
 };
 
 const fieldClass =
-  "flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-none outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50";
 
-const sectionClass =
-  "grid grid-cols-1 gap-4 rounded-xl border border-border/70 p-4 sm:grid-cols-2 sm:p-5";
+const selectClass =
+  "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50";
 
-function SectionHeading({
-  number,
-  title,
-  description,
-}: {
-  number: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex items-start gap-3 sm:col-span-2">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
-        {number}
-      </div>
-      <div>
-        <h2 className="font-semibold tracking-tight">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  htmlFor,
-  required,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 space-y-2">
-      <Label htmlFor={htmlFor}>
-        {label}
-        {required ? " *" : ""}
-      </Label>
-      {children}
-    </div>
-  );
-}
-
-function formatLKR(value: number) {
-  return new Intl.NumberFormat("en-LK", {
-    style: "currency",
-    currency: "LKR",
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
-}
-
-function moneyInput(value: string) {
-  if (value.trim() === "") return 0;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
+const textareaClass =
+  "min-h-20 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25";
 
 const formErrors: Record<string, string> = {
   invalid: "Please check the required fields and enter valid details.",
@@ -131,6 +87,92 @@ const formErrors: Record<string, string> = {
     "The sale could not be registered. Your entered details are preserved. Please try again.",
 };
 
+function formatLKR(value: number) {
+  return new Intl.NumberFormat("en-LK", {
+    style: "currency",
+    currency: "LKR",
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
+function moneyInput(value: string) {
+  if (value.trim() === "") return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function SectionTitle({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+        {description && (
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  required,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <Label
+        htmlFor={htmlFor}
+        className="text-xs font-medium text-foreground/85"
+      >
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  muted,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span
+        className={
+          muted ? "text-xs text-muted-foreground" : "text-muted-foreground"
+        }
+      >
+        {label}
+      </span>
+      <span className="shrink-0 font-medium tabular-nums">{value}</span>
+    </div>
+  );
+}
+
 export function CustomerForm({ products, employees }: CustomerFormProps) {
   const [formState, formAction, isPending] = useActionState(
     createSaleRegistration,
@@ -142,10 +184,11 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
   const [draftProductId, setDraftProductId] = useState("");
   const [draftProductBrandId, setDraftProductBrandId] = useState("");
   const [draftUnitPrice, setDraftUnitPrice] = useState("");
-  const [draftQuantity, setDraftQuantity] = useState("");
+  const [draftQuantity, setDraftQuantity] = useState("1");
   const [selectedItems, setSelectedItems] = useState<SelectedSaleItem[]>([]);
-  const [advancePayment, setAdvancePayment] = useState("");
-  const [monthlyInstallmentAmount, setMonthlyInstallmentAmount] = useState("");
+  const [advancePayment, setAdvancePayment] = useState("0");
+  const [monthlyInstallmentAmount, setMonthlyInstallmentAmount] = useState("0");
+
   const selectedProduct = products.find(
     (product) => product.id === draftProductId,
   );
@@ -182,12 +225,18 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
     const finalInstallment =
       installmentCount > 0 ? balance - monthly * (installmentCount - 1) : 0;
 
+    const regularInstallmentCount =
+      installmentCount > 0 && finalInstallment !== monthly
+        ? installmentCount - 1
+        : installmentCount;
+
     return {
       total,
       advance,
       balance,
       installmentCount,
       finalInstallment,
+      regularInstallmentCount,
       valid:
         selectedItems.length > 0 &&
         selectedItems.every(
@@ -239,7 +288,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
   }
 
   function handleAddProduct() {
-    if (!selectedProduct || !draftStockQuantity) return;
+    if (!selectedProduct || draftStockQuantity === undefined) return;
 
     const quantity = Number(draftQuantity);
     const price = moneyInput(draftUnitPrice);
@@ -265,9 +314,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
     const existingQuantity =
       existingIndex >= 0 ? selectedItems[existingIndex].quantity : 0;
 
-    if (existingQuantity + quantity > draftStockQuantity) {
-      return;
-    }
+    if (existingQuantity + quantity > draftStockQuantity) return;
 
     if (existingIndex >= 0) {
       setSelectedItems((current) =>
@@ -299,7 +346,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
     setDraftProductId("");
     setDraftProductBrandId("");
     setDraftUnitPrice("");
-    setDraftQuantity("");
+    setDraftQuantity("1");
   }
 
   function handleRemoveProduct(key: string) {
@@ -320,13 +367,20 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+
     startTransition(() => {
       formAction(formData);
     });
   }
 
+  const canSubmit =
+    !isPending &&
+    products.length > 0 &&
+    calculations.valid &&
+    calculations.installmentCount <= 1200;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <input
         type="hidden"
         name="items"
@@ -342,664 +396,808 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
 
       {formState.error && (
         <div
-          className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          className="flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/5 px-3.5 py-3 text-sm text-destructive"
           role="alert"
         >
-          {formErrors[formState.error] ?? formErrors.failed}
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          <span>{formErrors[formState.error] ?? formErrors.failed}</span>
         </div>
       )}
-      <Card>
-        <CardContent className="space-y-6">
-          <section className="grid grid-cols-1 gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(260px,1.15fr)] sm:items-center sm:p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                <span className="text-sm font-bold">01</span>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          {/* Customer and bill information */}
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SectionTitle
+                  icon={UserRound}
+                  title="Customer & Bill Information"
+                  description="Enter the customer's details and sale reference."
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  * Required fields
+                </span>
               </div>
-              <div className="min-w-0">
-                <h2 className="font-semibold tracking-tight">Bill Reference</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  A unique number for this sale.
-                </p>
-              </div>
-            </div>
 
-            <Field label="Bill number" htmlFor="billNumber" required>
-              <Input
-                id="billNumber"
-                name="billNumber"
-                placeholder="e.g. BILL-2026-001"
-                maxLength={50}
-                className="h-11 border-primary/30 bg-background font-semibold tracking-wide focus-visible:border-primary"
-                required
-              />
-            </Field>
-          </section>
-
-          <section className={sectionClass}>
-            <SectionHeading
-              number="02"
-              title="Customer Information"
-              description="Customer identity, address, and contact numbers."
-            />
-
-            <Field label="Customer name" htmlFor="fullName" required>
-              <Input
-                id="fullName"
-                name="fullName"
-                placeholder="Enter full name as on NIC"
-                minLength={2}
-                maxLength={150}
-                autoComplete="name"
-                required
-              />
-            </Field>
-
-            <Field label="Address" htmlFor="address" required>
-              <Input
-                id="address"
-                name="address"
-                placeholder="Enter the full residential address"
-                minLength={3}
-                maxLength={500}
-                autoComplete="street-address"
-                required
-              />
-            </Field>
-
-            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-3">
-              <Field label="NIC number" htmlFor="nic" required>
-                <Input
-                  id="nic"
-                  name="nic"
-                  placeholder="Enter NIC number"
-                  minLength={10}
-                  maxLength={12}
-                  autoComplete="off"
-                  required
-                />
-              </Field>
-
-              <Field label="Primary mobile" htmlFor="mobile" required>
-                <Input
-                  id="mobile"
-                  name="mobile"
-                  type="tel"
-                  placeholder="Main contact number"
-                  minLength={7}
-                  maxLength={20}
-                  autoComplete="tel"
-                  required
-                />
-              </Field>
-
-              <Field label="Additional mobile" htmlFor="additionalMobile">
-                <Input
-                  id="additionalMobile"
-                  name="additionalMobile"
-                  type="tel"
-                  placeholder="Alternative number (optional)"
-                  minLength={7}
-                  maxLength={20}
-                  autoComplete="tel"
-                />
-              </Field>
-            </div>
-          </section>
-
-          <section className={sectionClass}>
-            <SectionHeading
-              number="03"
-              title="Product Details"
-              description="Add one or more products to this sale."
-            />
-
-            <div className="space-y-5 sm:col-span-2">
-              <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-2">
-                <Field label="Product" htmlFor="draftProductId" required>
-                  <select
-                    id="draftProductId"
-                    value={draftProductId}
-                    onChange={(event) =>
-                      handleProductChange(event.target.value)
-                    }
-                    className={fieldClass}
-                  >
-                    <option value="">Select a product</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="Brand" htmlFor="draftProductBrandId">
-                  {selectedProduct &&
-                  selectedProduct.productBrands.length > 1 ? (
-                    <select
-                      id="draftProductBrandId"
-                      value={draftProductBrandId}
-                      onChange={(event) =>
-                        handleBrandChange(event.target.value)
-                      }
-                      disabled={!selectedProduct}
-                      className={fieldClass}
-                    >
-                      <option value="">Select a brand</option>
-                      {selectedProduct.productBrands.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.brandName} — {formatLKR(Number(option.price))}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Input
-                      id="draftBrandDisplay"
-                      value={
-                        !selectedProduct
-                          ? ""
-                          : selectedProduct.productBrands.length === 0
-                            ? "No brand option"
-                            : (selectedProductBrand?.brandName ?? "")
-                      }
-                      placeholder="Select a product first"
-                      readOnly
-                      disabled={!selectedProduct}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Quantity" htmlFor="draftQuantity" required>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="Bill Number" htmlFor="billNumber" required>
                   <Input
-                    id="draftQuantity"
+                    id="billNumber"
+                    name="billNumber"
+                    placeholder="e.g. BILL-2026-001"
+                    maxLength={50}
+                    className={`${fieldClass} font-semibold tracking-wide`}
+                    required
+                  />
+                </Field>
+
+                <Field label="Customer Name" htmlFor="fullName" required>
+                  <Input
+                    id="fullName"
+                    name="fullName"
+                    placeholder="Full name as on NIC"
+                    minLength={2}
+                    maxLength={150}
+                    autoComplete="name"
+                    className={fieldClass}
+                    required
+                  />
+                </Field>
+
+                <Field label="Address" htmlFor="address" required>
+                  <Input
+                    id="address"
+                    name="address"
+                    placeholder="Residential address"
+                    minLength={3}
+                    maxLength={500}
+                    autoComplete="street-address"
+                    className={fieldClass}
+                    required
+                  />
+                </Field>
+
+                <Field label="NIC Number" htmlFor="nic" required>
+                  <Input
+                    id="nic"
+                    name="nic"
+                    placeholder="NIC number"
+                    minLength={5}
+                    maxLength={20}
+                    autoComplete="off"
+                    className={fieldClass}
+                    required
+                  />
+                </Field>
+
+                <Field label="Primary Mobile" htmlFor="mobile" required>
+                  <Input
+                    id="mobile"
+                    name="mobile"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9+()\\-\\s]*"
+                    placeholder="Main contact number"
+                    minLength={7}
+                    maxLength={20}
+                    autoComplete="tel"
+                    className={fieldClass}
+                    required
+                  />
+                </Field>
+
+                <Field label="Additional Mobile" htmlFor="additionalMobile">
+                  <Input
+                    id="additionalMobile"
+                    name="additionalMobile"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9+()\\-\\s]*"
+                    placeholder="Alternative number"
+                    maxLength={20}
+                    autoComplete="tel"
+                    className={fieldClass}
+                  />
+                </Field>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Product selection */}
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SectionTitle
+                  icon={ShoppingBag}
+                  title="Products"
+                  description="Select products, quantities and selling prices."
+                />
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                  {selectedItems.length} Selected
+                </span>
+              </div>
+
+              {products.length === 0 ? (
+                <div className="rounded-lg border border-dashed px-4 py-6 text-center">
+                  <Package className="mx-auto size-6 text-muted-foreground" />
+                  <p className="mt-2 text-sm font-medium">
+                    No active products available
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Add or activate products before registering a sale.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <Field label="Product" htmlFor="draftProductId" required>
+                      <select
+                        id="draftProductId"
+                        value={draftProductId}
+                        onChange={(event) =>
+                          handleProductChange(event.target.value)
+                        }
+                        className={selectClass}
+                      >
+                        <option value="">Select Product</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <Field label="Brand" htmlFor="draftProductBrandId">
+                      {selectedProduct &&
+                      selectedProduct.productBrands.length > 1 ? (
+                        <select
+                          id="draftProductBrandId"
+                          value={draftProductBrandId}
+                          onChange={(event) =>
+                            handleBrandChange(event.target.value)
+                          }
+                          className={selectClass}
+                        >
+                          <option value="">Select brand</option>
+                          {selectedProduct.productBrands.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.brandName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          id="draftBrandDisplay"
+                          value={
+                            !selectedProduct
+                              ? ""
+                              : selectedProduct.productBrands.length === 0
+                                ? "No brand option"
+                                : (selectedProductBrand?.brandName ?? "")
+                          }
+                          placeholder="Select product first"
+                          readOnly
+                          disabled={!selectedProduct}
+                          className={fieldClass}
+                        />
+                      )}
+                    </Field>
+
+                    <Field label="Quantity" htmlFor="draftQuantity" required>
+                      <Input
+                        id="draftQuantity"
+                        type="number"
+                        min="1"
+                        max="10000"
+                        step="1"
+                        value={draftQuantity}
+                        onChange={(event) =>
+                          setDraftQuantity(event.target.value)
+                        }
+                        placeholder="Quantity"
+                        disabled={!selectedProduct}
+                        className={fieldClass}
+                      />
+                    </Field>
+
+                    <Field
+                      label="Unit Price (LKR)"
+                      htmlFor="draftUnitPrice"
+                      required
+                    >
+                      <Input
+                        id="draftUnitPrice"
+                        type="number"
+                        min="0.01"
+                        max="9999999999.99"
+                        step="0.01"
+                        value={draftUnitPrice}
+                        onChange={(event) =>
+                          setDraftUnitPrice(event.target.value)
+                        }
+                        placeholder="Selling price"
+                        disabled={
+                          !selectedProduct ||
+                          (selectedProduct.productBrands.length > 1 &&
+                            !selectedProductBrand)
+                        }
+                        className={fieldClass}
+                      />
+                    </Field>
+                  </div>
+
+                  {selectedProduct && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span>
+                          Available stock:{" "}
+                          <strong className="font-semibold text-foreground">
+                            {draftStockQuantity ?? "Select a brand"}
+                          </strong>
+                        </span>
+                        {selectedProductBrand?.warrantyMonths != null && (
+                          <span>
+                            Warranty: {selectedProductBrand.warrantyMonths}{" "}
+                            months
+                          </span>
+                        )}
+                        {selectedProduct.productBrands.length === 0 &&
+                          selectedProduct.warrantyMonths != null && (
+                            <span>
+                              Warranty: {selectedProduct.warrantyMonths} months
+                            </span>
+                          )}
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleAddProduct}
+                        disabled={
+                          !selectedProduct ||
+                          draftStockQuantity === undefined ||
+                          (selectedProduct.productBrands.length > 1 &&
+                            !selectedProductBrand) ||
+                          !Number.isInteger(Number(draftQuantity)) ||
+                          Number(draftQuantity) < 1 ||
+                          Number(draftQuantity) > (draftStockQuantity ?? 0) ||
+                          moneyInput(draftUnitPrice) <= 0
+                        }
+                      >
+                        <CirclePlus className="size-4" />
+                        Add product
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedItems.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border/80 px-4 py-6 text-center">
+                  <ShoppingBag className="mx-auto size-6 text-muted-foreground/70" />
+                  <p className="mt-2 text-sm font-medium">No products added</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Choose a product above to add it to this sale.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-border/70">
+                  <div className="hidden grid-cols-[minmax(0,1fr)_90px_130px_125px_36px] items-center gap-3 bg-muted/45 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+                    <span>Product</span>
+                    <span>Qty</span>
+                    <span>Unit Price</span>
+                    <span className="text-right">Subtotal</span>
+                    <span />
+                  </div>
+
+                  <div className="divide-y divide-border/60">
+                    {selectedItems.map((item) => (
+                      <div
+                        key={item.key}
+                        className="grid grid-cols-2 gap-x-3 gap-y-2.5 p-3 sm:grid-cols-[minmax(0,1fr)_90px_130px_125px_36px] sm:items-center"
+                      >
+                        <div className="col-span-2 min-w-0 sm:col-span-1">
+                          <p className="truncate text-sm font-medium">
+                            {item.productName}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {item.brandName || null}{" "}
+                            {item.warrantyMonths != null
+                              ? ` · ${item.warrantyMonths} month warranty`
+                              : ""}
+                            {" · Stock "}
+                            {item.stockQuantity}
+                          </p>
+                        </div>
+
+                        <div>
+                          <Label
+                            htmlFor={`quantity-${item.key}`}
+                            className="mb-1 block text-[11px] text-muted-foreground sm:hidden"
+                          >
+                            Quantity
+                          </Label>
+                          <Input
+                            id={`quantity-${item.key}`}
+                            type="number"
+                            min="1"
+                            max={item.stockQuantity}
+                            step="1"
+                            value={item.quantity}
+                            className="h-8"
+                            onChange={(event) => {
+                              const nextQuantity = Number(event.target.value);
+                              if (
+                                Number.isInteger(nextQuantity) &&
+                                nextQuantity >= 1 &&
+                                nextQuantity <= item.stockQuantity
+                              ) {
+                                handleUpdateItem(item.key, {
+                                  quantity: nextQuantity,
+                                });
+                              }
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <Label
+                            htmlFor={`price-${item.key}`}
+                            className="mb-1 block text-[11px] text-muted-foreground sm:hidden"
+                          >
+                            Unit Price (LKR)
+                          </Label>
+                          <Input
+                            id={`price-${item.key}`}
+                            type="number"
+                            min="0.01"
+                            max="9999999999.99"
+                            step="0.01"
+                            value={item.unitPrice}
+                            className="h-8"
+                            onChange={(event) =>
+                              handleUpdateItem(item.key, {
+                                unitPrice: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end">
+                          <span className="text-[11px] text-muted-foreground sm:hidden">
+                            Subtotal
+                          </span>
+                          <span className="text-sm font-semibold tabular-nums">
+                            {formatLKR(
+                              moneyInput(item.unitPrice) * item.quantity,
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => handleRemoveProduct(item.key)}
+                            aria-label={`Remove ${item.productName}`}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 bg-muted/30 px-3 py-2.5 text-xs">
+                    <span className="text-muted-foreground">
+                      {totalProductQuantity} Total Units
+                    </span>
+                    <span className="font-semibold tabular-nums">
+                      Products Total: {formatLKR(calculations.total)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Payment and schedule */}
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <SectionTitle
+                icon={Wallet}
+                title="Payment Plan"
+                description="Set the advance payment and installment schedule."
+              />
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field
+                  label="Advance Payment (LKR)"
+                  htmlFor="advancePayment"
+                  required
+                >
+                  <Input
+                    id="advancePayment"
+                    name="advancePayment"
                     type="number"
-                    min="1"
-                    max="10000"
-                    step="1"
-                    value={draftQuantity}
-                    onChange={(event) => setDraftQuantity(event.target.value)}
-                    placeholder="Select a product first"
-                    disabled={!selectedProduct}
+                    min="0"
+                    max="9999999999.99"
+                    step="0.01"
+                    value={advancePayment}
+                    onChange={(event) => setAdvancePayment(event.target.value)}
+                    className={fieldClass}
+                    required
                   />
                 </Field>
 
                 <Field
-                  label="Unit price (LKR)"
-                  htmlFor="draftUnitPrice"
+                  label="Monthly Installment (LKR)"
+                  htmlFor="monthlyInstallmentAmount"
                   required
                 >
                   <Input
-                    id="draftUnitPrice"
+                    id="monthlyInstallmentAmount"
+                    name="monthlyInstallmentAmount"
                     type="number"
-                    min="0.01"
+                    min="0"
                     max="9999999999.99"
                     step="0.01"
-                    value={draftUnitPrice}
-                    onChange={(event) => setDraftUnitPrice(event.target.value)}
-                    placeholder="Select a product first"
-                    disabled={
-                      !selectedProduct ||
-                      (selectedProduct.productBrands.length > 1 &&
-                        !selectedProductBrand)
+                    value={monthlyInstallmentAmount}
+                    onChange={(event) =>
+                      setMonthlyInstallmentAmount(event.target.value)
                     }
+                    className={fieldClass}
+                    required
                   />
                 </Field>
 
-                {selectedProduct && (
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:col-span-2">
-                    <span>
-                      Available stock: {draftStockQuantity ?? "Select a brand"}
-                    </span>
-                    {selectedProductBrand?.warrantyMonths !== null &&
-                      selectedProductBrand?.warrantyMonths !== undefined && (
-                        <span>
-                          Warranty: {selectedProductBrand.warrantyMonths} months
-                        </span>
-                      )}
-                    {selectedProduct.productBrands.length === 0 &&
-                      selectedProduct.warrantyMonths !== null && (
-                        <span>
-                          Warranty: {selectedProduct.warrantyMonths} months
-                        </span>
-                      )}
-                  </div>
-                )}
-
-                <div className="sm:col-span-2">
-                  <Button
-                    type="button"
-                    onClick={handleAddProduct}
-                    disabled={
-                      !selectedProduct ||
-                      draftStockQuantity === undefined ||
-                      (selectedProduct.productBrands.length > 1 &&
-                        !selectedProductBrand) ||
-                      !Number.isInteger(Number(draftQuantity)) ||
-                      Number(draftQuantity) < 1 ||
-                      Number(draftQuantity) > (draftStockQuantity ?? 0) ||
-                      moneyInput(draftUnitPrice) <= 0
+                <Field
+                  label="First Installment Date"
+                  htmlFor="firstInstallmentDate"
+                  required
+                >
+                  <Input
+                    id="firstInstallmentDate"
+                    name="firstInstallmentDate"
+                    type="date"
+                    value={firstInstallmentDate}
+                    onChange={(event) =>
+                      setFirstInstallmentDate(event.target.value)
                     }
-                    className="w-full sm:w-auto"
-                  >
-                    <SquarePlus className="size-4" />
-                    Add Product
-                  </Button>
-                </div>
+                    className={fieldClass}
+                    required
+                  />
+                </Field>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold tracking-tight">
-                      Selected Products
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Review and adjust the products before registering the
-                      sale.
-                    </p>
+              <div className="rounded-lg border border-border/70 bg-muted/25 px-3.5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="size-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold">
+                      Installment Schedule Preview
+                    </span>
                   </div>
-                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                    {selectedItems.length} items
-                  </span>
+                  {calculations.balance === 0 ? (
+                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                      Fully Paid Upfront
+                    </span>
+                  ) : calculations.installmentCount > 0 ? (
+                    <span className="text-xs font-medium text-primary">
+                      {calculations.installmentCount} Monthly Payments
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      Awaiting Monthly Amount
+                    </span>
+                  )}
                 </div>
 
-                {selectedItems.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center">
-                    <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-muted">
-                      <ShoppingBag className="size-6 text-muted-foreground" />
-                    </div>
-                    <p className="mt-3 text-sm font-medium">
-                      No products added yet
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Select a product above and click Add Product.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-hidden rounded-xl border border-border">
-                    <div className="hidden grid-cols-[minmax(0,1fr)_100px_145px_145px_40px] gap-3 bg-muted/60 px-4 py-3 text-xs font-semibold text-muted-foreground sm:grid">
-                      <span>Product</span>
-                      <span>Quantity</span>
-                      <span>Unit price</span>
-                      <span className="text-right">Subtotal</span>
-                      <span />
-                    </div>
+                {calculations.balance > 0 &&
+                  calculations.installmentCount > 0 && (
+                    <div className="mt-3 grid gap-3 border-t border-border/60 pt-3 sm:grid-cols-3">
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Total installments
+                        </p>
+                        <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                          {calculations.installmentCount}
+                        </p>
+                      </div>
 
-                    <div className="divide-y divide-border">
-                      {selectedItems.map((item) => (
-                        <div
-                          key={item.key}
-                          className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_100px_145px_145px_40px] sm:items-center"
-                        >
-                          <div className="col-span-2 min-w-0 sm:col-span-1">
-                            <p className="truncate text-sm font-semibold">
-                              {item.productName}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {item.brandName ?? "No brand option"}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Stock available: {item.stockQuantity}
-                            </p>
-                          </div>
-
-                          <div>
-                            <Label
-                              htmlFor={`quantity-${item.key}`}
-                              className="mb-1 block text-xs text-muted-foreground sm:hidden"
-                            >
-                              Quantity
-                            </Label>
-                            <Input
-                              id={`quantity-${item.key}`}
-                              type="number"
-                              min="1"
-                              max={item.stockQuantity}
-                              step="1"
-                              value={item.quantity}
-                              className="h-9"
-                              onChange={(event) => {
-                                const nextQuantity = Number(event.target.value);
-                                if (
-                                  Number.isInteger(nextQuantity) &&
-                                  nextQuantity >= 1 &&
-                                  nextQuantity <= item.stockQuantity
-                                ) {
-                                  handleUpdateItem(item.key, {
-                                    quantity: nextQuantity,
-                                  });
-                                }
-                              }}
-                            />
-                          </div>
-
-                          <div>
-                            <Label
-                              htmlFor={`price-${item.key}`}
-                              className="mb-1 block text-xs text-muted-foreground sm:hidden"
-                            >
-                              Unit price (LKR)
-                            </Label>
-                            <Input
-                              id={`price-${item.key}`}
-                              type="number"
-                              min="0.01"
-                              step="0.01"
-                              value={item.unitPrice}
-                              className="h-9"
-                              onChange={(event) =>
-                                handleUpdateItem(item.key, {
-                                  unitPrice: event.target.value,
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between sm:justify-end">
-                            <span className="text-xs text-muted-foreground sm:hidden">
-                              Subtotal
-                            </span>
-                            <span className="text-sm font-semibold tabular-nums">
-                              {formatLKR(
-                                moneyInput(item.unitPrice) * item.quantity,
-                              )}
-                            </span>
-                          </div>
-
-                          <div className="flex justify-end">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => handleRemoveProduct(item.key)}
-                              aria-label={`Remove ${item.productName}`}
-                            >
-                              <Trash2 className="size-4" />{" "}
-                            </Button>
-                          </div>
+                      {calculations.regularInstallmentCount > 0 && (
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Regular Payment
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                            {formatLKR(moneyInput(monthlyInstallmentAmount))}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            × {calculations.regularInstallmentCount} payments
+                          </p>
                         </div>
-                      ))}
+                      )}
+
+                      {calculations.finalInstallment !==
+                        moneyInput(monthlyInstallmentAmount) && (
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Final Payment
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                            {formatLKR(calculations.finalInstallment)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            × 1 payment
+                          </p>
+                        </div>
+                      )}
                     </div>
+                  )}
+
+                {calculations.balance > 0 &&
+                  calculations.installmentCount === 0 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Enter a positive monthly installment amount to preview the
+                      schedule.
+                    </p>
+                  )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Dispatch and collection details */}
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <SectionTitle
+                icon={ReceiptText}
+                title="Sale & Collection Details"
+                description="Dispatch date, responsible employee and collection information."
+              />
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="Dispatch Date" htmlFor="saleDate" required>
+                  <Input
+                    id="saleDate"
+                    name="saleDate"
+                    type="date"
+                    value={saleDate}
+                    onChange={(event) => setSaleDate(event.target.value)}
+                    className={fieldClass}
+                    required
+                  />
+                </Field>
+
+                <Field label="Salesman" htmlFor="salesEmployeeId">
+                  <select
+                    id="salesEmployeeId"
+                    name="salesEmployeeId"
+                    defaultValue=""
+                    className={selectClass}
+                  >
+                    <option value="">Select employee (optional)</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.fullName}
+                      </option>
+                    ))}
+                  </select>
+                  {employees.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      No active employees available.
+                    </p>
+                  )}
+                </Field>
+
+                <Field label="Collection Area" htmlFor="area">
+                  <Input
+                    id="area"
+                    name="area"
+                    placeholder="Town or collection route"
+                    maxLength={150}
+                    className={fieldClass}
+                  />
+                </Field>
+
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <Field label="Location Directions / Notes" htmlFor="notes">
+                    <textarea
+                      id="notes"
+                      name="notes"
+                      rows={2}
+                      maxLength={2000}
+                      placeholder="Optional directions or useful notes for the collection team"
+                      className={textareaClass}
+                    />
+                  </Field>
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <Field
+                    label="Guarantor Contact Details"
+                    htmlFor="guarantorDetails"
+                  >
+                    <textarea
+                      id="guarantorDetails"
+                      name="guarantorDetails"
+                      rows={2}
+                      maxLength={2000}
+                      placeholder="Name, mobile number and address (optional)"
+                      className={textareaClass}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Sale summary and submit */}
+        <aside className="min-w-0 xl:sticky xl:top-4">
+          <Card className="overflow-hidden border-border/70 shadow-sm">
+            <div className="border-b border-border/70 bg-muted/25 px-4 py-3.5">
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <ReceiptText className="size-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold">Sale Summary</h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    Live payment breakdown
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <CardContent className="space-y-3.5 p-4">
+              <div className="space-y-2.5">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Products
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {totalProductQuantity} units total
+                    </p>
                   </div>
+
+                  {selectedItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className="flex items-start justify-between gap-3 text-xs"
+                    >
+                      <p className="min-w-0 font-medium leading-5">
+                        {item.productName}
+                        {item.brandName ? ` - ${item.brandName}` : ""}
+                      </p>
+
+                      <p className="shrink-0 font-semibold tabular-nums">
+                        × {item.quantity}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-border/60 pt-2.5">
+                  <SummaryRow
+                    label="Sale amount"
+                    value={formatLKR(calculations.total)}
+                  />
+                </div>
+                <SummaryRow
+                  label="Down payment"
+                  value={`− ${formatLKR(calculations.advance)}`}
+                />
+              </div>
+
+              <div className="rounded-lg bg-primary/5 p-3.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Outstanding balance
+                </p>
+
+                <p className="mt-1 text-xl font-bold tracking-tight tabular-nums">
+                  {formatLKR(calculations.balance)}
+                </p>
+              </div>
+
+              {calculations.balance > 0 &&
+                calculations.installmentCount > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {calculations.regularInstallmentCount > 0 && (
+                      <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+                        <p className="text-[10px] font-medium text-muted-foreground">
+                          Regular Payment
+                        </p>
+                        <p className="mt-1 font-semibold text-[12px]">
+                          {formatLKR(moneyInput(monthlyInstallmentAmount))}
+                        </p>
+                        <p className="text-[10px] font-medium text-muted-foreground">
+                          × {calculations.regularInstallmentCount} payments
+                        </p>
+                      </div>
+                    )}
+
+                    {Math.abs(
+                      calculations.finalInstallment -
+                        moneyInput(monthlyInstallmentAmount),
+                    ) > 0.009 && (
+                      <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+                        <p className="text-[10px] font-medium text-muted-foreground">
+                          Final Payment
+                        </p>
+                        <p className="mt-1 font-semibold text-[12px]">
+                          {formatLKR(calculations.finalInstallment)}
+                        </p>
+                        <p className="text-[10px] font-medium text-muted-foreground">
+                          × 1{""} payment
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              <div className="space-y-2 border-t border-border/60 pt-3">
+                {calculations.advance > calculations.total && (
+                  <p
+                    className="flex items-start gap-1.5 text-xs text-destructive"
+                    role="alert"
+                  >
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                    Advance cannot exceed the sale amount.
+                  </p>
+                )}
+
+                {calculations.installmentCount > 1200 && (
+                  <p
+                    className="flex items-start gap-1.5 text-xs text-destructive"
+                    role="alert"
+                  >
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                    This plan exceeds the 1,200-installment limit.
+                  </p>
+                )}
+
+                {calculations.valid ? (
+                  <p className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="size-3.5" />
+                    Sale details are ready to submit.
+                  </p>
+                ) : (
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Add at least one product, check quantities and prices, and
+                    complete the payment details to continue.
+                  </p>
                 )}
               </div>
 
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Combined product quantity
-                    </p>
-                    <p className="mt-1 text-lg font-semibold tabular-nums">
-                      {totalProductQuantity} units
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-muted-foreground">
-                      Total product value
-                    </p>
-                    <p className="mt-1 text-xl font-bold tabular-nums">
-                      {formatLKR(calculations.total)}
-                    </p>
-                  </div>
-                </div>
+              <div className="space-y-2 pt-1">
+                <Button type="submit" disabled={!canSubmit} className="w-full">
+                  {isPending ? "Registering sale..." : "Register sale"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => window.history.back()}
+                  disabled={isPending}
+                >
+                  Cancel
+                </Button>
               </div>
-            </div>
-          </section>
 
-          <section className={sectionClass}>
-            <SectionHeading
-              number="04"
-              title="Payment Plan"
-              description="Enter the down payment and agreed installment schedule."
-            />
-
-            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-3">
-              <Field
-                label="Advance payment (LKR)"
-                htmlFor="advancePayment"
-                required
-              >
-                <Input
-                  id="advancePayment"
-                  name="advancePayment"
-                  type="number"
-                  min="0"
-                  max="9999999999.99"
-                  step="0.01"
-                  value={advancePayment}
-                  onChange={(event) => setAdvancePayment(event.target.value)}
-                  placeholder="Enter advance payment"
-                  required
-                />
-              </Field>
-
-              <Field
-                label="Monthly installment (LKR)"
-                htmlFor="monthlyInstallmentAmount"
-                required={calculations.balance > 0}
-              >
-                <Input
-                  id="monthlyInstallmentAmount"
-                  name="monthlyInstallmentAmount"
-                  type="number"
-                  min="0.01"
-                  max="9999999999.99"
-                  step="0.01"
-                  value={monthlyInstallmentAmount}
-                  onChange={(event) =>
-                    setMonthlyInstallmentAmount(event.target.value)
-                  }
-                  placeholder="Agreed monthly amount"
-                  required={calculations.balance > 0}
-                />
-              </Field>
-
-              <Field
-                label="First installment date"
-                htmlFor="firstInstallmentDate"
-                required
-              >
-                <Input
-                  id="firstInstallmentDate"
-                  name="firstInstallmentDate"
-                  type="date"
-                  value={firstInstallmentDate}
-                  onChange={(event) =>
-                    setFirstInstallmentDate(event.target.value)
-                  }
-                  required
-                />
-              </Field>
-            </div>
-
-            <div className="rounded-lg border border-border bg-muted/40 p-4 sm:col-span-2">
-              <p className="text-sm font-medium">Installment calculation</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Installments are scheduled monthly from the first installment
-                date. The last payment is adjusted to clear the remaining
-                balance.
+              <p className="text-center text-[10px] leading-4 text-muted-foreground">
+                Product stock will be validated and updated when the sale is
+                registered.
               </p>
-              {calculations.balance === 0 ? (
-                <p className="mt-3 text-sm font-medium text-green-700 dark:text-green-400">
-                  The advance covers the full sale amount. No installments are
-                  required.
-                </p>
-              ) : calculations.installmentCount > 0 ? (
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Number of installments
-                    </p>
-                    <p className="mt-1 text-lg font-semibold tabular-nums">
-                      {calculations.installmentCount}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Regular payment
-                    </p>
-                    <p className="mt-1 text-lg font-semibold tabular-nums">
-                      {formatLKR(moneyInput(monthlyInstallmentAmount))}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Final payment
-                    </p>
-                    <p className="mt-1 text-lg font-semibold tabular-nums">
-                      {formatLKR(calculations.finalInstallment)}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Enter a positive monthly installment amount to calculate the
-                  schedule.
-                </p>
-              )}
-            </div>
-
-            <Field label="Dispatch date" htmlFor="saleDate" required>
-              <Input
-                id="saleDate"
-                name="saleDate"
-                type="date"
-                value={saleDate}
-                onChange={(event) => setSaleDate(event.target.value)}
-                required
-              />
-            </Field>
-
-            <Field label="Salesman" htmlFor="salesEmployeeId">
-              <select
-                id="salesEmployeeId"
-                name="salesEmployeeId"
-                defaultValue=""
-                className={fieldClass}
-              >
-                <option value="">Select an employee (optional)</option>
-                {employees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.fullName}
-                  </option>
-                ))}
-              </select>
-              {employees.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No active employees are available.
-                </p>
-              )}
-            </Field>
-          </section>
-
-          <section className={sectionClass}>
-            <SectionHeading
-              number="05"
-              title="Collection Details & Review"
-              description="Add collection information and check the balance before saving."
-            />
-
-            <div className="sm:col-span-2">
-              <Field label="Location directions / notes" htmlFor="notes">
-                <textarea
-                  id="notes"
-                  name="notes"
-                  rows={3}
-                  maxLength={2000}
-                  placeholder="Optional directions or useful notes for the collection team"
-                  className={fieldClass}
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
-              <Field label="Collection area" htmlFor="area">
-                <Input
-                  id="area"
-                  name="area"
-                  placeholder="Town, village, or collection route"
-                  maxLength={150}
-                />
-              </Field>
-
-              <Field
-                label="Guarantor contact details"
-                htmlFor="guarantorDetails"
-              >
-                <textarea
-                  id="guarantorDetails"
-                  name="guarantorDetails"
-                  rows={3}
-                  maxLength={2000}
-                  placeholder="Name, mobile number, and address"
-                  className={fieldClass}
-                />
-              </Field>
-            </div>
-
-            <div className="space-y-4 rounded-xl bg-primary/5 p-4 sm:col-span-2 sm:p-5">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-muted-foreground">
-                  Total sale amount
-                </span>
-                <span className="text-base font-semibold tabular-nums">
-                  {formatLKR(calculations.total)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-muted-foreground">
-                  Down payment
-                </span>
-                <span className="text-sm font-medium tabular-nums">
-                  − {formatLKR(calculations.advance)}
-                </span>
-              </div>
-              <div className="border-t border-border/70 pt-4">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-medium">Outstanding balance</span>
-                  <span className="text-xl font-bold tabular-nums">
-                    {formatLKR(calculations.balance)}
-                  </span>
-                </div>
-              </div>
-              {calculations.advance > calculations.total && (
-                <p className="text-sm text-destructive" role="alert">
-                  The advance cannot exceed the total sale amount.
-                </p>
-              )}
-              {calculations.installmentCount > 1200 && (
-                <p className="text-sm text-destructive" role="alert">
-                  This plan exceeds the maximum supported number of
-                  installments.
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col-reverse gap-3 sm:col-span-2 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => window.history.back()}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  isPending ||
-                  products.length === 0 ||
-                  !calculations.valid ||
-                  calculations.installmentCount > 1200
-                }
-              >
-                {isPending ? "Saving..." : "Register Sale"}
-              </Button>
-            </div>
-          </section>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
     </form>
   );
 }

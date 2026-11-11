@@ -17,7 +17,7 @@ function WorkspaceFallback() {
       role="status"
       aria-live="polite"
     >
-      Loading workspace…
+      Loading Dashboard...
     </div>
   );
 }
