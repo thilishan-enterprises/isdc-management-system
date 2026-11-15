@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-guards";
 
-export const runtime = "nodejs";
-
 function csvCell(value: string | number | null | undefined) {
   let text = String(value ?? "");
 
