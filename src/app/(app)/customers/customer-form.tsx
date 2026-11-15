@@ -1,11 +1,30 @@
 "use client";
 
-import { startTransition, useActionState, useMemo, useState } from "react";
-import { createSaleRegistration } from "./actions";
+import {
+  startTransition,
+  useActionState,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  checkSaleCustomerRecords,
+  confirmSaleCustomerRecord,
+  createSaleRegistration,
+} from "./actions";
+import type { CustomerRecordCheckResult } from "./actions";
+import { CustomerRecordCheckDialog } from "./customer-record-check-dialog";
+import type { RecordChoice } from "./customer-record-check-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { AppInput } from "@/components/common/app-input";
+import { AppTextarea } from "@/components/common/app-textarea";
+import { FormField } from "@/components/common/form-field";
+import { FormSectionTitle } from "@/components/common/form-section-title";
+import { AppSelect } from "@/components/common/app-select";
+import { AppDatePicker } from "@/components/common/app-date-picker";
 import {
   AlertCircle,
   CalendarDays,
@@ -60,22 +79,15 @@ type CustomerFormProps = {
   today: string;
 };
 
-const fieldClass =
-  "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-none outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50";
-
-const selectClass =
-  "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50";
-
-const textareaClass =
-  "min-h-20 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25";
-
 const formErrors: Record<string, string> = {
   invalid: "Please check the required fields and enter valid details.",
   amount: "Please check the sale amount and advance payment.",
   installment: "Please enter a valid monthly installment amount and schedule.",
   duplicate: "That bill number is already registered.",
+  verification:
+    "Customer record verification expired or changed. Please check the record again.",
   "customer-conflict":
-    "The NIC and mobile number belong to different customer records. Please check them.",
+    "This NIC or mobile is already assigned to a customer. Select that customer or resolve the conflict.",
   product: "The selected product is no longer available.",
   "product-brand-required": "Please select a brand for this product.",
   "product-brand":
@@ -99,55 +111,6 @@ function moneyInput(value: string) {
   if (value.trim() === "") return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
-
-function SectionTitle({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: React.ElementType;
-  title: string;
-  description?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        <Icon className="size-4" />
-      </div>
-      <div className="min-w-0">
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-        {description && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  htmlFor,
-  required,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <Label
-        htmlFor={htmlFor}
-        className="text-xs font-medium text-foreground/85"
-      >
-        {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
-      {children}
-    </div>
-  );
 }
 
 function SummaryRow({
@@ -179,6 +142,25 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
     {},
   );
 
+  const [customerName, setCustomerName] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerNic, setCustomerNic] = useState("");
+  const [customerMobile, setCustomerMobile] = useState("");
+  const [customerAdditionalMobile, setCustomerAdditionalMobile] = useState("");
+  const [billNumber, setBillNumber] = useState("");
+  const [recordVerified, setRecordVerified] = useState(false);
+  const [checkingRecord, setCheckingRecord] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  const [checkResult, setCheckResult] =
+    useState<CustomerRecordCheckResult | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
+    null,
+  );
+  const [verificationToken, setVerificationToken] = useState("");
+  const [confirmingRecord, setConfirmingRecord] = useState(false);
+  const [customerArea, setCustomerArea] = useState("");
+  const [customerGuarantor, setCustomerGuarantor] = useState("");
+  const requestVersion = useRef(0);
   const [saleDate, setSaleDate] = useState("");
   const [firstInstallmentDate, setFirstInstallmentDate] = useState("");
   const [draftProductId, setDraftProductId] = useState("");
@@ -188,6 +170,101 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
   const [selectedItems, setSelectedItems] = useState<SelectedSaleItem[]>([]);
   const [advancePayment, setAdvancePayment] = useState("0");
   const [monthlyInstallmentAmount, setMonthlyInstallmentAmount] = useState("0");
+
+  const canCheckRecord =
+    billNumber.trim().length > 0 &&
+    /^[A-Za-z0-9/-]{1,50}$/.test(billNumber.trim()) &&
+    customerName.trim().length >= 2 &&
+    customerAddress.trim().length >= 3 &&
+    /^[A-Za-z0-9-]{5,20}$/.test(customerNic.trim()) &&
+    /^[0-9]{7,10}$/.test(customerMobile) &&
+    (customerAdditionalMobile === "" ||
+      /^[0-9]{7,10}$/.test(customerAdditionalMobile));
+
+  function invalidateVerification() {
+    requestVersion.current += 1;
+    setRecordVerified(false);
+    setCheckResult(null);
+    setCheckError("");
+    setSelectedCustomerId(null);
+    setVerificationToken("");
+  }
+
+  async function handleCheckRecord() {
+    if (!canCheckRecord || checkingRecord) return;
+    const version = ++requestVersion.current;
+    setCheckingRecord(true);
+    setCheckError("");
+    try {
+      const result = await checkSaleCustomerRecords({
+        billNumber,
+        fullName: customerName,
+        address: customerAddress,
+        nic: customerNic,
+        mobile: customerMobile,
+        additionalMobile: customerAdditionalMobile,
+      });
+      if (version !== requestVersion.current) return;
+      if (!result.success) {
+        setCheckError(result.error ?? "Unable to check records.");
+      } else {
+        setCheckResult(result);
+      }
+    } catch {
+      if (version === requestVersion.current) {
+        setCheckError("Record check failed. Please try again.");
+      }
+    } finally {
+      setCheckingRecord(false);
+    }
+  }
+
+  async function handleRecordChoice(choice: RecordChoice) {
+    if (confirmingRecord) return;
+    const version = requestVersion.current;
+    setConfirmingRecord(true);
+    setCheckError("");
+    try {
+      const confirmation = await confirmSaleCustomerRecord({
+        entered: {
+          billNumber,
+          fullName: customerName,
+          address: customerAddress,
+          nic: customerNic,
+          mobile: customerMobile,
+          additionalMobile: customerAdditionalMobile,
+        },
+        selectedCustomerId: choice.customerId,
+        details: choice.details,
+      });
+      if (version !== requestVersion.current) return;
+      if (!confirmation.success || !confirmation.token) {
+        setCheckError(confirmation.error ?? "Unable to confirm this record.");
+        setCheckResult(null);
+        return;
+      }
+      if (choice.details) {
+        const details = choice.details;
+        setCustomerName(details.fullName);
+        setCustomerAddress(details.address);
+        setCustomerNic(details.nic);
+        setCustomerMobile(details.mobile);
+        setCustomerAdditionalMobile(details.additionalMobile ?? "");
+        setCustomerArea(details.area ?? "");
+        setCustomerGuarantor(details.guarantorDetails ?? "");
+      }
+      setSelectedCustomerId(choice.customerId);
+      setVerificationToken(confirmation.token);
+      setRecordVerified(true);
+      setCheckResult(null);
+    } catch {
+      if (version === requestVersion.current) {
+        setCheckError("Could not confirm the record. Please try again.");
+      }
+    } finally {
+      setConfirmingRecord(false);
+    }
+  }
 
   const selectedProduct = products.find(
     (product) => product.id === draftProductId,
@@ -288,6 +365,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
   }
 
   function handleAddProduct() {
+    if (!recordVerified) return;
     if (!selectedProduct || draftStockQuantity === undefined) return;
 
     const quantity = Number(draftQuantity);
@@ -350,6 +428,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
   }
 
   function handleRemoveProduct(key: string) {
+    if (!recordVerified) return;
     setSelectedItems((current) => current.filter((item) => item.key !== key));
   }
 
@@ -357,6 +436,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
     key: string,
     changes: Partial<Pick<SelectedSaleItem, "quantity" | "unitPrice">>,
   ) {
+    if (!recordVerified) return;
     setSelectedItems((current) =>
       current.map((item) =>
         item.key === key ? { ...item, ...changes } : item,
@@ -366,7 +446,10 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!recordVerified || !canCheckRecord || !verificationToken) return;
     const formData = new FormData(event.currentTarget);
+    formData.set("selectedCustomerId", selectedCustomerId ?? "");
+    formData.set("verificationToken", verificationToken);
 
     startTransition(() => {
       formAction(formData);
@@ -375,7 +458,11 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
 
   const canSubmit =
     !isPending &&
+    recordVerified &&
+    Boolean(verificationToken) &&
+    canCheckRecord &&
     products.length > 0 &&
+    Boolean(saleDate && firstInstallmentDate) &&
     calculations.valid &&
     calculations.installmentCount <= 1200;
 
@@ -394,6 +481,27 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
         )}
       />
 
+      {checkResult && (
+        <CustomerRecordCheckDialog
+          result={checkResult}
+          onChoose={handleRecordChoice}
+          onClose={() => setCheckResult(null)}
+        />
+      )}
+      <input
+        type="hidden"
+        name="selectedCustomerId"
+        value={selectedCustomerId ?? ""}
+      />
+      <input type="hidden" name="verificationToken" value={verificationToken} />
+      {checkError && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+        >
+          {checkError}
+        </p>
+      )}
       {formState.error && (
         <div
           className="flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/5 px-3.5 py-3 text-sm text-destructive"
@@ -410,96 +518,134 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
           <Card className="border-border/70 shadow-sm">
             <CardContent className="space-y-4 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <SectionTitle
+                <FormSectionTitle
                   icon={UserRound}
                   title="Customer & Bill Information"
                   description="Enter the customer's details and sale reference."
                 />
-                <span className="text-[11px] text-muted-foreground">
-                  * Required fields
-                </span>
+                <Button
+                  type="button"
+                  disabled={!canCheckRecord || checkingRecord || isPending}
+                  className="gap-2 font-semibold"
+                  onClick={handleCheckRecord}
+                >
+                  <CheckCircle2 className="size-4" />
+                  {checkingRecord
+                    ? "Checking records..."
+                    : recordVerified
+                      ? "Recheck Record"
+                      : "Check Record"}
+                </Button>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Field label="Bill Number" htmlFor="billNumber" required>
-                  <Input
+                <FormField label="Bill Number" htmlFor="billNumber" required>
+                  <AppInput
                     id="billNumber"
+                    value={billNumber}
                     name="billNumber"
                     placeholder="e.g. BILL-2026-001"
                     maxLength={50}
-                    className={`${fieldClass} font-semibold tracking-wide`}
+                    className="font-semibold tracking-wide"
                     required
+                    onChange={(event) => {
+                      invalidateVerification();
+                      setBillNumber(event.target.value);
+                    }}
                   />
-                </Field>
+                </FormField>
 
-                <Field label="Customer Name" htmlFor="fullName" required>
-                  <Input
+                <FormField label="Customer Name" htmlFor="fullName" required>
+                  <AppInput
                     id="fullName"
+                    value={customerName}
                     name="fullName"
                     placeholder="Full name as on NIC"
                     minLength={2}
                     maxLength={150}
                     autoComplete="name"
-                    className={fieldClass}
                     required
+                    onChange={(event) => {
+                      invalidateVerification();
+                      setCustomerName(event.target.value);
+                    }}
                   />
-                </Field>
+                </FormField>
 
-                <Field label="Address" htmlFor="address" required>
-                  <Input
+                <FormField label="Address" htmlFor="address" required>
+                  <AppInput
                     id="address"
+                    value={customerAddress}
                     name="address"
                     placeholder="Residential address"
                     minLength={3}
                     maxLength={500}
                     autoComplete="street-address"
-                    className={fieldClass}
                     required
+                    onChange={(event) => {
+                      invalidateVerification();
+                      setCustomerAddress(event.target.value);
+                    }}
                   />
-                </Field>
+                </FormField>
 
-                <Field label="NIC Number" htmlFor="nic" required>
-                  <Input
+                <FormField label="NIC Number" htmlFor="nic" required>
+                  <AppInput
                     id="nic"
+                    value={customerNic}
                     name="nic"
                     placeholder="NIC number"
-                    minLength={5}
-                    maxLength={20}
+                    minLength={10}
+                    maxLength={11}
                     autoComplete="off"
-                    className={fieldClass}
                     required
+                    onChange={(event) => {
+                      invalidateVerification();
+                      setCustomerNic(event.target.value);
+                    }}
                   />
-                </Field>
+                </FormField>
 
-                <Field label="Primary Mobile" htmlFor="mobile" required>
-                  <Input
+                <FormField label="Primary Mobile" htmlFor="mobile" required>
+                  <AppInput
                     id="mobile"
+                    value={customerMobile}
                     name="mobile"
                     type="tel"
                     inputMode="numeric"
-                    pattern="[0-9+()\\-\\s]*"
+                    pattern="[0-9]*"
                     placeholder="Main contact number"
                     minLength={7}
-                    maxLength={20}
+                    maxLength={10}
                     autoComplete="tel"
-                    className={fieldClass}
+                    onChange={(event) => {
+                      invalidateVerification();
+                      setCustomerMobile(event.target.value.replace(/\D/g, ""));
+                    }}
                     required
                   />
-                </Field>
+                </FormField>
 
-                <Field label="Additional Mobile" htmlFor="additionalMobile">
-                  <Input
+                <FormField label="Additional Mobile" htmlFor="additionalMobile">
+                  <AppInput
                     id="additionalMobile"
+                    value={customerAdditionalMobile}
                     name="additionalMobile"
                     type="tel"
                     inputMode="numeric"
-                    pattern="[0-9+()\\-\\s]*"
+                    pattern="[0-9]*"
                     placeholder="Alternative number"
-                    maxLength={20}
+                    minLength={7}
+                    maxLength={10}
                     autoComplete="tel"
-                    className={fieldClass}
+                    onChange={(event) => {
+                      invalidateVerification();
+                      setCustomerAdditionalMobile(
+                        event.target.value.replace(/\D/g, ""),
+                      );
+                    }}
                   />
-                </Field>
+                </FormField>
               </div>
             </CardContent>
           </Card>
@@ -508,7 +654,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
           <Card className="border-border/70 shadow-sm">
             <CardContent className="space-y-4 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <SectionTitle
+                <FormSectionTitle
                   icon={ShoppingBag}
                   title="Products"
                   description="Select products, quantities and selling prices."
@@ -531,44 +677,40 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
               ) : (
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <Field label="Product" htmlFor="draftProductId" required>
-                      <select
-                        id="draftProductId"
+                    <FormField
+                      label="Product"
+                      htmlFor="draftProductId"
+                      required
+                    >
+                      <AppSelect
                         value={draftProductId}
-                        onChange={(event) =>
-                          handleProductChange(event.target.value)
-                        }
-                        className={selectClass}
-                      >
-                        <option value="">Select Product</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
+                        onValueChange={handleProductChange}
+                        placeholder="Select Product"
+                        options={products.map((product) => ({
+                          value: product.id,
+                          label: product.name,
+                        }))}
+                        disabled={!recordVerified}
+                      />
+                    </FormField>
 
-                    <Field label="Brand" htmlFor="draftProductBrandId">
+                    <FormField label="Brand" htmlFor="draftProductBrandId">
                       {selectedProduct &&
                       selectedProduct.productBrands.length > 1 ? (
-                        <select
-                          id="draftProductBrandId"
+                        <AppSelect
                           value={draftProductBrandId}
-                          onChange={(event) =>
-                            handleBrandChange(event.target.value)
-                          }
-                          className={selectClass}
-                        >
-                          <option value="">Select brand</option>
-                          {selectedProduct.productBrands.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.brandName}
-                            </option>
-                          ))}
-                        </select>
+                          onValueChange={handleBrandChange}
+                          placeholder="Select brand"
+                          options={selectedProduct.productBrands.map(
+                            (option) => ({
+                              value: option.id,
+                              label: option.brandName,
+                            }),
+                          )}
+                          disabled={!recordVerified}
+                        />
                       ) : (
-                        <Input
+                        <AppInput
                           id="draftBrandDisplay"
                           value={
                             !selectedProduct
@@ -579,14 +721,17 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                           }
                           placeholder="Select product first"
                           readOnly
-                          disabled={!selectedProduct}
-                          className={fieldClass}
+                          disabled={!recordVerified || !selectedProduct}
                         />
                       )}
-                    </Field>
+                    </FormField>
 
-                    <Field label="Quantity" htmlFor="draftQuantity" required>
-                      <Input
+                    <FormField
+                      label="Quantity"
+                      htmlFor="draftQuantity"
+                      required
+                    >
+                      <AppInput
                         id="draftQuantity"
                         type="number"
                         min="1"
@@ -597,17 +742,17 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                           setDraftQuantity(event.target.value)
                         }
                         placeholder="Quantity"
-                        disabled={!selectedProduct}
-                        className={fieldClass}
+                        disabled={!recordVerified || !selectedProduct}
+                        className="h-8"
                       />
-                    </Field>
+                    </FormField>
 
-                    <Field
+                    <FormField
                       label="Unit Price (LKR)"
                       htmlFor="draftUnitPrice"
                       required
                     >
-                      <Input
+                      <AppInput
                         id="draftUnitPrice"
                         type="number"
                         min="0.01"
@@ -619,13 +764,14 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                         }
                         placeholder="Selling price"
                         disabled={
+                          !recordVerified ||
                           !selectedProduct ||
                           (selectedProduct.productBrands.length > 1 &&
                             !selectedProductBrand)
                         }
-                        className={fieldClass}
+                        className="h-8"
                       />
-                    </Field>
+                    </FormField>
                   </div>
 
                   {selectedProduct && (
@@ -656,6 +802,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                         size="sm"
                         onClick={handleAddProduct}
                         disabled={
+                          !recordVerified ||
                           !selectedProduct ||
                           draftStockQuantity === undefined ||
                           (selectedProduct.productBrands.length > 1 &&
@@ -683,16 +830,15 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-border/70">
-                  <div className="hidden grid-cols-[minmax(0,1fr)_90px_130px_125px_36px] items-center gap-3 bg-muted/45 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+                <div className="overflow-hidden rounded-lg border border-border/80 bg-muted/20 shadow-sm">
+                  <div className="hidden grid-cols-[minmax(0,1fr)_90px_130px_125px_36px] items-center gap-3 border-b border-border/70 bg-muted/70 px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
                     <span>Product</span>
                     <span>Qty</span>
                     <span>Unit Price</span>
                     <span className="text-right">Subtotal</span>
                     <span />
                   </div>
-
-                  <div className="divide-y divide-border/60">
+                  <div className="divide-y divide-border/70 bg-background/50">
                     {selectedItems.map((item) => (
                       <div
                         key={item.key}
@@ -727,6 +873,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                             step="1"
                             value={item.quantity}
                             className="h-8"
+                            disabled={!recordVerified}
                             onChange={(event) => {
                               const nextQuantity = Number(event.target.value);
                               if (
@@ -757,6 +904,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                             step="0.01"
                             value={item.unitPrice}
                             className="h-8"
+                            disabled={!recordVerified}
                             onChange={(event) =>
                               handleUpdateItem(item.key, {
                                 unitPrice: event.target.value,
@@ -782,6 +930,7 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                             variant="ghost"
                             size="icon"
                             className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            disabled={!recordVerified}
                             onClick={() => handleRemoveProduct(item.key)}
                             aria-label={`Remove ${item.productName}`}
                           >
@@ -791,7 +940,6 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                       </div>
                     ))}
                   </div>
-
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 bg-muted/30 px-3 py-2.5 text-xs">
                     <span className="text-muted-foreground">
                       {totalProductQuantity} Total Units
@@ -808,19 +956,19 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
           {/* Payment and schedule */}
           <Card className="border-border/70 shadow-sm">
             <CardContent className="space-y-4 p-4 sm:p-5">
-              <SectionTitle
+              <FormSectionTitle
                 icon={Wallet}
                 title="Payment Plan"
                 description="Set the advance payment and installment schedule."
               />
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Field
+                <FormField
                   label="Advance Payment (LKR)"
                   htmlFor="advancePayment"
                   required
                 >
-                  <Input
+                  <AppInput
                     id="advancePayment"
                     name="advancePayment"
                     type="number"
@@ -829,17 +977,17 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                     step="0.01"
                     value={advancePayment}
                     onChange={(event) => setAdvancePayment(event.target.value)}
-                    className={fieldClass}
+                    disabled={!recordVerified}
                     required
                   />
-                </Field>
+                </FormField>
 
-                <Field
+                <FormField
                   label="Monthly Installment (LKR)"
                   htmlFor="monthlyInstallmentAmount"
                   required
                 >
-                  <Input
+                  <AppInput
                     id="monthlyInstallmentAmount"
                     name="monthlyInstallmentAmount"
                     type="number"
@@ -850,28 +998,24 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                     onChange={(event) =>
                       setMonthlyInstallmentAmount(event.target.value)
                     }
-                    className={fieldClass}
+                    disabled={!recordVerified}
                     required
                   />
-                </Field>
+                </FormField>
 
-                <Field
+                <FormField
                   label="First Installment Date"
                   htmlFor="firstInstallmentDate"
                   required
                 >
-                  <Input
-                    id="firstInstallmentDate"
+                  <AppDatePicker
                     name="firstInstallmentDate"
-                    type="date"
                     value={firstInstallmentDate}
-                    onChange={(event) =>
-                      setFirstInstallmentDate(event.target.value)
-                    }
-                    className={fieldClass}
-                    required
+                    onChange={setFirstInstallmentDate}
+                    placeholder="Select first installment date"
+                    disabled={!recordVerified}
                   />
-                </Field>
+                </FormField>
               </div>
 
               <div className="rounded-lg border border-border/70 bg-muted/25 px-3.5 py-3">
@@ -954,83 +1098,87 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
           {/* Dispatch and collection details */}
           <Card className="border-border/70 shadow-sm">
             <CardContent className="space-y-4 p-4 sm:p-5">
-              <SectionTitle
+              <FormSectionTitle
                 icon={ReceiptText}
                 title="Sale & Collection Details"
-                description="Dispatch date, responsible employee and collection information."
+                description="Sales date, responsible employee and collection information."
               />
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Field label="Dispatch Date" htmlFor="saleDate" required>
-                  <Input
-                    id="saleDate"
+                <FormField label="Sales Date" htmlFor="saleDate" required>
+                  <AppDatePicker
                     name="saleDate"
-                    type="date"
                     value={saleDate}
-                    onChange={(event) => setSaleDate(event.target.value)}
-                    className={fieldClass}
-                    required
+                    onChange={setSaleDate}
+                    placeholder="Select sales date"
+                    disabled={!recordVerified}
                   />
-                </Field>
+                </FormField>
 
-                <Field label="Salesman" htmlFor="salesEmployeeId">
-                  <select
-                    id="salesEmployeeId"
+                <FormField label="Salesman" htmlFor="salesEmployeeId">
+                  <AppSelect
                     name="salesEmployeeId"
                     defaultValue=""
-                    className={selectClass}
-                  >
-                    <option value="">Select employee (optional)</option>
-                    {employees.map((employee) => (
-                      <option key={employee.id} value={employee.id}>
-                        {employee.fullName}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Select employee"
+                    options={employees.map((employee) => ({
+                      value: employee.id,
+                      label: employee.fullName,
+                    }))}
+                    disabled={!recordVerified}
+                  />
                   {employees.length === 0 && (
                     <p className="text-[11px] text-muted-foreground">
                       No active employees available.
                     </p>
                   )}
-                </Field>
+                </FormField>
 
-                <Field label="Collection Area" htmlFor="area">
-                  <Input
+                <FormField label="Collection Area" htmlFor="area">
+                  <AppInput
                     id="area"
+                    value={customerArea}
+                    onChange={(event) => setCustomerArea(event.target.value)}
                     name="area"
                     placeholder="Town or collection route"
                     maxLength={150}
-                    className={fieldClass}
+                    disabled={!recordVerified}
                   />
-                </Field>
+                </FormField>
 
                 <div className="sm:col-span-2 lg:col-span-3">
-                  <Field label="Location Directions / Notes" htmlFor="notes">
-                    <textarea
+                  <FormField
+                    label="Location Directions / Notes"
+                    htmlFor="notes"
+                  >
+                    <AppTextarea
                       id="notes"
                       name="notes"
                       rows={2}
                       maxLength={2000}
                       placeholder="Optional directions or useful notes for the collection team"
-                      className={textareaClass}
+                      disabled={!recordVerified}
                     />
-                  </Field>
+                  </FormField>
                 </div>
 
                 <div className="sm:col-span-2 lg:col-span-3">
-                  <Field
+                  <FormField
                     label="Guarantor Contact Details"
                     htmlFor="guarantorDetails"
                   >
-                    <textarea
+                    <AppTextarea
                       id="guarantorDetails"
+                      value={customerGuarantor}
+                      onChange={(event) =>
+                        setCustomerGuarantor(event.target.value)
+                      }
                       name="guarantorDetails"
                       rows={2}
                       maxLength={2000}
                       placeholder="Name, mobile number and address (optional)"
-                      className={textareaClass}
+                      disabled={!recordVerified}
                     />
-                  </Field>
+                  </FormField>
                 </div>
               </div>
             </CardContent>

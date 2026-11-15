@@ -162,6 +162,19 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
           },
         },
 
+        // Immutable customer details captured when this bill was registered.
+        customerSnapshot: {
+          select: {
+            fullName: true,
+            nic: true,
+            mobile: true,
+            additionalMobile: true,
+            address: true,
+            area: true,
+            guarantorDetails: true,
+          },
+        },
+
         salesEmployee: {
           select: {
             fullName: true,
@@ -331,6 +344,9 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
                       const advance = Number(sale.advancePayment);
                       const balance = Math.max(0, total - advance);
                       const firstInstallment = sale.installments[0] ?? null;
+                      // Legacy bills may not have a saved snapshot.
+                      const customerDetails =
+                        sale.customerSnapshot ?? sale.customer;
 
                       return (
                         <tr
@@ -341,10 +357,10 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
                           <td className="max-w-[210px] px-4 py-3">
                             <p className="font-semibold">{sale.billNumber}</p>
                             <p className="mt-1 truncate text-xs font-medium text-foreground/85">
-                              {sale.customer.fullName}
+                              {customerDetails.fullName}
                             </p>
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              NIC: {sale.customer.nic}
+                              NIC: {customerDetails.nic}
                             </p>
 
                             <details className="group mt-2">
@@ -362,31 +378,31 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
                                   <strong className="text-foreground">
                                     Mobile:
                                   </strong>{" "}
-                                  {sale.customer.mobile}
+                                  {customerDetails.mobile}
                                 </p>
                                 <p>
                                   <strong className="text-foreground">
                                     Additional:
                                   </strong>{" "}
-                                  {sale.customer.additionalMobile || "N/A"}
+                                  {customerDetails.additionalMobile || "N/A"}
                                 </p>
                                 <p>
                                   <strong className="text-foreground">
                                     Address:
                                   </strong>{" "}
-                                  {sale.customer.address}
+                                  {customerDetails.address}
                                 </p>
                                 <p>
                                   <strong className="text-foreground">
                                     Area:
                                   </strong>{" "}
-                                  {sale.customer.area || "N/A"}
+                                  {customerDetails.area || "N/A"}
                                 </p>
                                 <p className="whitespace-pre-wrap break-words">
                                   <strong className="text-foreground">
                                     Guarantor:
                                   </strong>{" "}
-                                  {sale.customer.guarantorDetails || "N/A"}
+                                  {customerDetails.guarantorDetails || "N/A"}
                                 </p>
                                 <p className="whitespace-pre-wrap break-words">
                                   <strong className="text-foreground">

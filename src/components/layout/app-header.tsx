@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ChevronRight, LogOut, UserRound } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -23,28 +23,8 @@ type AppHeaderProps = {
   role: AppRole;
 };
 
-const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/customers": "Customers",
-  "/employees": "Employees",
-  "/users": "Users",
-  "/products": "Products",
-  "/sales": "Sales",
-  "/collections": "Collections",
-  "/vehicles": "Vehicles",
-  "/settings": "Settings",
-};
-
 export function AppHeader({ username, role }: AppHeaderProps) {
-  const pathname = usePathname();
   const router = useRouter();
-
-  const pageTitle =
-    pageTitles[pathname] ??
-    Object.entries(pageTitles).find(
-      ([path]) => path !== "/dashboard" && pathname.startsWith(`${path}/`),
-    )?.[1] ??
-    "Workspace";
 
   const initials =
     username
@@ -67,12 +47,14 @@ export function AppHeader({ username, role }: AppHeaderProps) {
 
       <Separator orientation="vertical" className="mr-1 h-5" />
 
-      <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <h1 className="truncate text-lg font-semibold tracking-tight">
-          {pageTitle}
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+        <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+          Welcome back, {username}
+          <span className="ml-1.5">👋</span>
         </h1>
-        <p className="hidden text-xs text-muted-foreground sm:block">
-          Installment Management System
+
+        <p className="hidden truncate text-xs text-muted-foreground sm:block">
+          Manage your sales, collections, inventory and customers in one place.
         </p>
       </div>
 

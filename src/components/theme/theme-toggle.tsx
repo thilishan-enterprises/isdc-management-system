@@ -43,7 +43,7 @@ export function ThemeToggle() {
             : "Switch to dark mode"
       }
       title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className="inline-flex size-10 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-wait disabled:opacity-70"
+      className="inline-flex size-10 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-wait disabled:opacity-70 cursor-pointer"
     >
       {isDark ? (
         <Sun className="size-[18px]" aria-hidden="true" />

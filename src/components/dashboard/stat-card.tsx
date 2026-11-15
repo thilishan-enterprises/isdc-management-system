@@ -9,7 +9,7 @@ type StatCardProps = {
   description?: string;
   icon: ReactNode;
   className?: string;
-  tone?: "blue" | "violet" | "emerald" | "amber";
+  tone?: "blue" | "violet" | "emerald" | "amber" | "rose";
 };
 
 const toneStyles = {
@@ -32,6 +32,11 @@ const toneStyles = {
     icon: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
     accent: "bg-amber-500",
     background: "bg-amber-50/35 dark:bg-card",
+  },
+  rose: {
+    icon: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    accent: "bg-rose-500",
+    background: "bg-rose-50/25 dark:bg-card",
   },
 };
 

@@ -8,6 +8,7 @@ import {
   ReceiptText,
   Users,
   Wallet,
+  TrendingDown,
 } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
@@ -79,6 +80,7 @@ async function DashboardContent() {
     advances,
     todayCollections,
     recentCollections,
+    writtenOffSales,
   ] = await Promise.all([
     prisma.customer.count(),
 
@@ -131,6 +133,24 @@ async function DashboardContent() {
         },
       },
     }),
+
+    prisma.sale.findMany({
+      where: {
+        status: "WRITTEN_OFF",
+      },
+      select: {
+        totalAmount: true,
+        advancePayment: true,
+        payments: {
+          where: {
+            status: "POSTED",
+          },
+          select: {
+            amount: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const postedPayments = await prisma.payment.aggregate({
@@ -151,6 +171,16 @@ async function DashboardContent() {
     0,
     totalSaleAmount - totalAdvances - totalPostedPayments,
   );
+
+  const totalBusinessLoss = writtenOffSales.reduce((total, sale) => {
+    const totalPaid =
+      Number(sale.advancePayment) +
+      sale.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+    const loss = Math.max(0, Number(sale.totalAmount) - totalPaid);
+
+    return total + loss;
+  }, 0);
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-7">
@@ -200,6 +230,14 @@ async function DashboardContent() {
             icon={<Wallet className="size-5" />}
             tone="amber"
             className="border-amber-500/20"
+          />
+
+          <StatCard
+            title="Total Business Loss"
+            value={formatCurrency(totalBusinessLoss)}
+            description="Uncollected balance from written-off sales"
+            icon={<TrendingDown className="size-5" />}
+            tone="rose"
           />
         </div>
       </section>

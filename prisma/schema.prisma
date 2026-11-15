@@ -17,6 +17,7 @@ enum SaleStatus {
   ACTIVE
   PAID
   CANCELLED
+  WRITTEN_OFF
 }
 
 enum PaymentStatus {
@@ -139,6 +140,7 @@ model Sale {
   updatedAt        DateTime   @updatedAt
 
   customer         Customer   @relation(fields: [customerId], references: [id])
+  customerSnapshot SaleCustomerSnapshot?
   salesEmployee    Employee?  @relation(fields: [salesEmployeeId], references: [id])
   items            SaleItem[]
   installments     Installment[]
@@ -159,6 +161,23 @@ model SaleItem {
   sale           Sale          @relation(fields: [saleId], references: [id])
   product        Product       @relation(fields: [productId], references: [id])
   productBrand   ProductBrand? @relation(fields: [productBrandId], references: [id])
+}
+
+model SaleCustomerSnapshot {
+  id               String   @id @default(cuid())
+  saleId           String   @unique
+
+  fullName         String
+  nic              String
+  mobile           String
+  additionalMobile String?
+  address          String
+  area             String?
+  guarantorDetails String?  @db.Text
+
+  createdAt        DateTime @default(now())
+
+  sale             Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
 }
 
 model Installment {
