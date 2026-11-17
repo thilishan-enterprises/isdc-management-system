@@ -551,7 +551,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-5">
       <PageHeader
-        title="Sales"
+        title="Customer Base"
         description="Manage registered sales, customer records, installment schedules and payment balances."
         actions={
           <Link

@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-guards";
 
 function csvCell(value: string | number | null | undefined) {
   let text = String(value ?? "");
 
-  // Prevent spreadsheet formula execution in CSV cells.
-  if (/^[\s]*[=+\-@\t\r]/.test(text)) {
+  // Prevent CSV formula injection when opened in Excel.
+  if (/^\s*[=+\-@\t\r]/.test(text)) {
     text = `'${text}`;
   }
 
@@ -18,129 +18,62 @@ function formatDate(date: Date) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
     timeZone: "Asia/Colombo",
   }).format(date);
 }
 
-export async function GET(request: NextRequest) {
-  // Use your application's existing server-side
-  // authentication and authorization checks here.
-  const user = await requireUser();
+export async function GET() {
+  // Only authenticated users can export customer data.
+  await requireUser();
 
-  if (!user) {
-    return new NextResponse("Unauthorized", {
-      status: 401,
-    });
-  }
-
-  const params = request.nextUrl.searchParams;
-
-  const q = (params.get("q") ?? "").trim().slice(0, 150);
-  const area = (params.get("area") ?? "").trim().slice(0, 150);
-
-  const where = {
-    ...(area
-      ? {
-          area: {
-            equals: area,
-            mode: "insensitive" as const,
-          },
-        }
-      : {}),
-
-    ...(q
-      ? {
-          OR: [
-            {
-              fullName: {
-                contains: q,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              nic: {
-                contains: q,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              mobile: {
-                contains: q,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              additionalMobile: {
-                contains: q,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              address: {
-                contains: q,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              area: {
-                contains: q,
-                mode: "insensitive" as const,
-              },
-            },
-          ],
-        }
-      : {}),
-  };
-
-  const allowedSorts = {
-    customer: "fullName",
-    nic: "nic",
-    mobile: "mobile",
-    area: "area",
-    registered: "createdAt",
-  } as const;
-
-  const requestedSort = params.get("sort") ?? "registered";
-
-  const sort = Object.prototype.hasOwnProperty.call(allowedSorts, requestedSort)
-    ? (requestedSort as keyof typeof allowedSorts)
-    : "registered";
-
-  const direction = params.get("direction") === "asc" ? "asc" : "desc";
-
+  // Fetch ALL customers without search, filters or pagination.
   const customers = await prisma.customer.findMany({
-    where,
-    orderBy: [{ [allowedSorts[sort]]: direction }, { id: "desc" }],
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     select: {
+      id: true,
       fullName: true,
       nic: true,
       mobile: true,
       additionalMobile: true,
       address: true,
       area: true,
+      guarantorDetails: true,
+      notes: true,
       createdAt: true,
+      updatedAt: true,
     },
   });
 
   const headers = [
+    "Customer ID",
     "Customer Name",
     "NIC Number",
-    "Mobile",
+    "Primary Mobile",
     "Additional Mobile",
     "Address",
     "Collection Area",
+    "Guarantor Details",
+    "Additional Notes",
     "Registered Date",
+    "Last Updated",
   ];
 
   const csvRows = customers.map((customer) =>
     [
+      customer.id,
       customer.fullName,
       customer.nic,
       customer.mobile,
       customer.additionalMobile,
       customer.address,
       customer.area,
+      customer.guarantorDetails,
+      customer.notes,
       formatDate(customer.createdAt),
+      formatDate(customer.updatedAt),
     ]
       .map(csvCell)
       .join(","),

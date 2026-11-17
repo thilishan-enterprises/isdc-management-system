@@ -1,18 +1,20 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { PageHeader } from "@/components/layout/page-header";
 import {
   DataTable,
   type DataTableColumn,
   type DataTableRow,
 } from "@/components/common/data-table";
-import { CalendarDays, Download, UserPlus } from "lucide-react";
+import { CalendarDays, Download, Upload, UserPlus } from "lucide-react";
 import { PageWorkspace } from "@/components/layout/page-workspace";
 import { DataTableToolbar } from "@/components/common/data-table-toolbar";
 import { requireUser } from "@/lib/auth-guards";
 import { connection } from "next/server";
 import { RouteToast } from "@/components/common/route-toast";
+import { AppHeaderDetails } from "@/components/layout/app-header-details";
+import { getSriLankaCreatedAtRange } from "@/lib/customer-created-date";
+import { WhatsAppPhone } from "@/components/common/whatsapp-phone";
 
 type CustomersPageProps = {
   searchParams: Promise<{
@@ -24,6 +26,8 @@ type CustomersPageProps = {
     q?: string;
     area?: string;
     page?: string;
+    createdFrom?: string;
+    createdTo?: string;
   }>;
 };
 
@@ -63,6 +67,8 @@ function buildCustomersUrl(
   sort: string,
   direction: string,
   size: number,
+  createdFrom: string,
+  createdTo: string,
 ) {
   const params = new URLSearchParams();
 
@@ -72,6 +78,8 @@ function buildCustomersUrl(
   if (sort) params.set("sort", sort);
   if (direction) params.set("direction", direction);
   params.set("size", String(size));
+  if (createdFrom) params.set("createdFrom", createdFrom);
+  if (createdTo) params.set("createdTo", createdTo);
 
   return `/customers?${params.toString()}`;
 }
@@ -133,6 +141,12 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
   const area =
     typeof params.area === "string" ? params.area.trim().slice(0, 150) : "";
 
+  const createdFrom =
+    typeof params.createdFrom === "string" ? params.createdFrom.trim() : "";
+  const createdTo =
+    typeof params.createdTo === "string" ? params.createdTo.trim() : "";
+  const createdAtRange = getSriLankaCreatedAtRange(createdFrom, createdTo);
+
   const requestedPage = Number(params.page ?? "1");
 
   const page =
@@ -165,6 +179,7 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
 
   // Search and filter conditions.
   const where = {
+    ...(createdAtRange ? { createdAt: createdAtRange } : {}),
     ...(area
       ? {
           area: {
@@ -234,6 +249,7 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
     orderBy: [{ [sortFields[sort]]: direction }, { id: "desc" }],
     skip: (currentPage - 1) * pageSize,
     take: pageSize,
+
     select: {
       id: true,
       fullName: true,
@@ -242,7 +258,10 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
       additionalMobile: true,
       address: true,
       area: true,
+      guarantorDetails: true,
+      notes: true,
       createdAt: true,
+      updatedAt: true,
     },
   });
 
@@ -270,11 +289,13 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
 
       mobile: (
         <div className="space-y-0.5">
-          <p className="whitespace-nowrap text-sm">{customer.mobile}</p>
+          <p className="whitespace-nowrap text-sm">
+            <WhatsAppPhone phone={customer.mobile} />
+          </p>
 
           {customer.additionalMobile && (
             <p className="whitespace-nowrap text-xs text-muted-foreground">
-              {customer.additionalMobile}
+              <WhatsAppPhone phone={customer.additionalMobile} />
             </p>
           )}
         </div>
@@ -303,7 +324,7 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
     {
       name: "area",
       label: "Collection Area",
-      placeholder: "All Areas",
+      placeholder: "Select Area",
       value: area,
       options: [
         ...(area &&
@@ -320,26 +341,25 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
     },
   ];
 
-  const exportUrl = `/customers/export?${new URLSearchParams({
-    q,
-    area,
-    sort,
-    direction,
-  }).toString()}`;
+  const exportUrl = "/customers/exports";
+  const exportSelectedUrl = "/customers/exports/selected";
 
   return (
     <>
+      <AppHeaderDetails count={totalCustomers} countLabel="customers" />
       <RouteToast messages={customerToastMessages} />
       <PageWorkspace
-        className="h-[calc(100svh-7rem)] md:h-[calc(100svh-7rem)]"
         scrollMode="table"
-        header={
-          <>
-            <PageHeader
-              title="Customer Directory"
-              count={totalCustomers}
-              countLabel="customers"
-              compact
+        toolbar={
+          <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm [&>div]:border-b-0">
+            <DataTableToolbar
+              searchPlaceholder="Search name, NIC, mobile or address..."
+              filters={areaFilters}
+              dateRangeFilter={{
+                label: "Filter by Date",
+                startName: "createdFrom",
+                endName: "createdTo",
+              }}
               actions={
                 <>
                   <a
@@ -351,6 +371,13 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
                     Export All
                   </a>
                   <Link
+                    href="/customers/import"
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-input bg-background px-3.5 text-sm font-medium transition-colors hover:bg-muted"
+                  >
+                    <Upload className="size-4" />
+                    Import
+                  </Link>
+                  <Link
                     href="/customers/new"
                     className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
                   >
@@ -359,14 +386,6 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
                   </Link>
                 </>
               }
-            />
-          </>
-        }
-        toolbar={
-          <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm [&>div]:border-b-0">
-            <DataTableToolbar
-              searchPlaceholder="Search name, NIC, mobile or address..."
-              filters={areaFilters}
             />
           </div>
         }
@@ -381,28 +400,47 @@ async function CustomersContent({ searchParams }: CustomersPageProps) {
             pageSize={pageSize}
             totalRows={totalRows}
             pageHref={(nextPage) =>
-              buildCustomersUrl(q, area, nextPage, sort, direction, pageSize)
+              buildCustomersUrl(
+                q,
+                area,
+                nextPage,
+                sort,
+                direction,
+                pageSize,
+                createdFrom,
+                createdTo,
+              )
             }
             sort={sort}
             direction={direction}
             sortHref={(key, nextDirection) =>
-              buildCustomersUrl(q, area, 1, key, nextDirection, pageSize)
+              buildCustomersUrl(
+                q,
+                area,
+                1,
+                key,
+                nextDirection,
+                pageSize,
+                createdFrom,
+                createdTo,
+              )
             }
             pageSizeOptions={[10, 25, 50, 100]}
             pageSizeHref={(size) =>
-              buildCustomersUrl(q, area, 1, sort, direction, size)
+              buildCustomersUrl(
+                q,
+                area,
+                1,
+                sort,
+                direction,
+                size,
+                createdFrom,
+                createdTo,
+              )
             }
             selectable
-            exportFilename="customers.csv"
-            exportRows={customers.map((customer) => ({
-              Name: customer.fullName,
-              NIC: customer.nic,
-              Mobile: customer.mobile,
-              AdditionalMobile: customer.additionalMobile,
-              Address: customer.address,
-              Area: customer.area,
-              Registered: formatRegisteredDate(customer.createdAt),
-            }))}
+            exportSelectedHref={exportSelectedUrl}
+            exportFilename="customers-selected.csv"
             emptyTitle={
               totalCustomers === 0
                 ? "No customers registered yet"

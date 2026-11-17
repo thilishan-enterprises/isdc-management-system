@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth-guards";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
+import { AppHeaderDetailsProvider } from "@/components/layout/app-header-details";
+import { AppMain } from "@/components/layout/app-main";
 import type { AppRole } from "@/lib/navigation";
 
 type AppLayoutProps = {
@@ -32,14 +34,16 @@ async function AuthenticatedWorkspace({ children }: AppLayoutProps) {
   const username = session.user.username ?? "User";
 
   return (
-    <SidebarProvider>
-      <AppSidebar role={role} username={username} />
+    <SidebarProvider className="h-svh min-h-0 overflow-hidden">
+      <AppHeaderDetailsProvider>
+        <AppSidebar role={role} username={username} />
 
-      <SidebarInset className="min-h-svh min-w-0">
-        <AppHeader username={username} role={role} />
+        <SidebarInset className="h-svh min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
+          <AppHeader username={username} role={role} />
 
-        <main className="flex-1 p-4 md:p-6">{children}</main>
-      </SidebarInset>
+          <AppMain>{children}</AppMain>
+        </SidebarInset>
+      </AppHeaderDetailsProvider>
     </SidebarProvider>
   );
 }

@@ -38,9 +38,9 @@ export function AppSidebar({ role, username }: AppSidebarProps) {
       .toUpperCase() || "US";
 
   return (
-    <Sidebar collapsible="icon" variant="inset">
+    <Sidebar collapsible="icon" variant="sidebar">
       {/* Brand */}
-      <SidebarHeader className="border-b border-sidebar-border/70 px-4 py-4">
+      <SidebarHeader className="h-18 shrink-0 justify-center border-b border-border px-4 py-3 group-data-[collapsible=icon]:px-2.5">
         <div className="flex min-w-0 items-center gap-3 group-data-[collapsible=icon]:justify-center">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/20">
             <span className="text-sm font-bold tracking-tight">IM</span>
@@ -58,30 +58,43 @@ export function AppSidebar({ role, username }: AppSidebarProps) {
       </SidebarHeader>
 
       {/* Navigation */}
-      <SidebarContent className="gap-1 px-3 py-4">
-        {groups.map((group) => (
-          <SidebarGroup key={group.title} className="px-0 py-1">
-            <SidebarGroupLabel className="h-8 px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground/75 group-data-[collapsible=icon]:opacity-0">
-              {group.title}
-            </SidebarGroupLabel>
+      <SidebarContent className="gap-1 px-3 py-4 group-data-[collapsible=icon]:px-2.5">
+        {groups.map((group) => {
+          const groupTitle = group.title?.trim();
 
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
+          return (
+            <SidebarGroup
+              key={group.items[0]?.href ?? groupTitle}
+              className="px-0 py-1"
+            >
+              {groupTitle && (
+                <SidebarGroupLabel className="h-8 px-3 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground/75 group-data-[collapsible=icon]:opacity-0">
+                  {groupTitle}
+                </SidebarGroupLabel>
+              )}
 
-                  const isActive =
-                    pathname === item.href ||
-                    (item.href !== "/dashboard" &&
-                      pathname.startsWith(`${item.href}/`));
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-1">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
 
-                  return (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        render={<Link href={item.href} />}
-                        isActive={isActive}
-                        tooltip={item.title}
-                        className="
+                    const isActive =
+                      pathname === item.href ||
+                      (item.href !== "/dashboard" &&
+                        pathname.startsWith(`${item.href}/`));
+
+                    return (
+                      <SidebarMenuItem
+                        key={item.href}
+                        className={
+                          item.visuallySeparated ? "my-1.5" : undefined
+                        }
+                      >
+                        <SidebarMenuButton
+                          render={<Link href={item.href} />}
+                          isActive={isActive}
+                          tooltip={item.title}
+                          className="
                           h-10 rounded-xl px-3
                           text-[13px] font-medium
                           text-sidebar-foreground/80
@@ -95,22 +108,23 @@ export function AppSidebar({ role, username }: AppSidebarProps) {
                           [&>svg]:size-[18px]
                           [&>svg]:shrink-0
                         "
-                      >
-                        <Icon aria-hidden="true" />
-                        <span>{item.title}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+                        >
+                          <Icon aria-hidden="true" />
+                          <span>{item.title}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
       </SidebarContent>
 
       {/* User profile */}
       <SidebarFooter className="border-t border-sidebar-border/70 p-3">
-        <div className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-2 group-data-[collapsible=icon]:justify-center">
+        <div className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent text-[11px] font-semibold text-sidebar-foreground">
             {initials}
           </div>

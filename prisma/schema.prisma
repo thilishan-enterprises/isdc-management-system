@@ -25,6 +25,24 @@ enum PaymentStatus {
   VOIDED
 }
 
+enum ImportModule {
+  CUSTOMERS
+}
+
+enum ImportJobStatus {
+  READY
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  NO_CHANGES
+  FAILED
+}
+
+enum CustomerPhoneType {
+  PRIMARY
+  ADDITIONAL
+}
+
 model Employee {
   id          String   @id @default(cuid())
   fullName    String
@@ -53,6 +71,7 @@ model User {
   employee     Employee? @relation(fields: [employeeId], references: [id])
   collectionBatches CollectionBatch[]
   auditLogs AuditLog[]
+  importJobs ImportJob[]
 }
 
 model Customer {
@@ -68,7 +87,21 @@ model Customer {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  sales Sale[]
+  sales  Sale[]
+  phones CustomerPhone[]
+}
+
+model CustomerPhone {
+  id              String            @id @default(cuid())
+  customerId      String
+  type            CustomerPhoneType
+  normalizedPhone String            @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, type])
 }
 
 model ProductCategory {
@@ -277,4 +310,38 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+model ImportJob {
+  id                String          @id @default(cuid())
+  sessionKey        String          @unique @db.VarChar(64)
+  module            ImportModule
+  payloadDigest     String          @db.VarChar(64)
+  originalFilename  String          @db.VarChar(255)
+  uploadedRowCount  Int
+  importedCount     Int             @default(0)
+  skippedCount      Int             @default(0)
+  invalidCount      Int             @default(0)
+  duplicateCount    Int             @default(0)
+  failedCount       Int             @default(0)
+  status            ImportJobStatus @default(READY)
+  batchSize         Int             @default(100)
+  totalBatches      Int             @default(0)
+  nextBatchIndex    Int             @default(0)
+  candidateRows     Json?
+  attemptCount      Int             @default(0)
+  leaseToken        String?         @db.VarChar(64)
+  leaseExpiresAt    DateTime?
+  failureCode       String?         @db.VarChar(100)
+  initiatedByUserId String
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  initiatedBy User @relation(fields: [initiatedByUserId], references: [id])
+
+  @@index([module, createdAt])
+  @@index([initiatedByUserId, createdAt])
+  @@index([status, leaseExpiresAt])
 }

@@ -594,14 +594,18 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                     id="nic"
                     value={customerNic}
                     name="nic"
-                    placeholder="NIC number"
-                    minLength={10}
-                    maxLength={11}
+                    placeholder="9 or 12 digit NIC number"
+                    minLength={9}
+                    maxLength={12}
+                    pattern="(?:[0-9]{9}|[0-9]{12})"
+                    inputMode="numeric"
                     autoComplete="off"
                     required
                     onChange={(event) => {
                       invalidateVerification();
-                      setCustomerNic(event.target.value);
+                      setCustomerNic(
+                        event.target.value.replace(/\D/g, "").slice(0, 12),
+                      );
                     }}
                   />
                 </FormField>
@@ -613,9 +617,9 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                     name="mobile"
                     type="tel"
                     inputMode="numeric"
-                    pattern="[0-9]*"
+                    pattern="(?:070|071|072|074|075|076|077|078)[0-9]{7}"
                     placeholder="Main contact number"
-                    minLength={7}
+                    minLength={10}
                     maxLength={10}
                     autoComplete="tel"
                     onChange={(event) => {
@@ -633,15 +637,15 @@ export function CustomerForm({ products, employees }: CustomerFormProps) {
                     name="additionalMobile"
                     type="tel"
                     inputMode="numeric"
-                    pattern="[0-9]*"
+                    pattern="(?:(?:070|071|072|074|075|076|077|078)[0-9]{7}|[0-9]{11,15})"
                     placeholder="Alternative number"
-                    minLength={7}
-                    maxLength={10}
+                    minLength={10}
+                    maxLength={15}
                     autoComplete="tel"
                     onChange={(event) => {
                       invalidateVerification();
                       setCustomerAdditionalMobile(
-                        event.target.value.replace(/\D/g, ""),
+                        event.target.value.replace(/\D/g, "").slice(0, 15),
                       );
                     }}
                   />

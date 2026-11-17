@@ -4,65 +4,257 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { requireUser } from "@/lib/auth-guards";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  ADDITIONAL_MOBILE_ERROR,
+  isValidAdditionalMobile,
+  isValidNic,
+  isValidPrimaryMobile,
+  NIC_ERROR,
+  normalizeNic,
+  normalizePhone,
+  PRIMARY_MOBILE_ERROR,
+  validateCustomerContact,
+} from "@/lib/customer-contact";
+import { customerPhoneOwnershipWhere } from "@/lib/customer-ownership";
 
-export async function createCustomer(formData: FormData) {
+export type CustomerRegistrationField =
+  | "fullName"
+  | "nic"
+  | "mobile"
+  | "additionalMobile"
+  | "address"
+  | "area"
+  | "guarantorDetails"
+  | "notes";
+
+export type CustomerRegistrationState = {
+  fieldErrors?: Partial<Record<CustomerRegistrationField, string>>;
+  formError?: string;
+};
+
+class CustomerRegistrationConflict extends Error {
+  constructor(
+    readonly fieldErrors: NonNullable<
+      CustomerRegistrationState["fieldErrors"]
+    >,
+  ) {
+    super("CUSTOMER_REGISTRATION_CONFLICT");
+  }
+}
+
+function getUniqueCustomerField(
+  error: unknown,
+): "nic" | "mobile" | "phone" | null {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("code" in error) ||
+    error.code !== "P2002"
+  ) {
+    return null;
+  }
+
+  const meta = "meta" in error ? error.meta : undefined;
+  const target =
+    typeof meta === "object" && meta !== null && "target" in meta
+      ? meta.target
+      : undefined;
+  const driverAdapterError =
+    typeof meta === "object" && meta !== null && "driverAdapterError" in meta
+      ? meta.driverAdapterError
+      : undefined;
+  const cause =
+    typeof driverAdapterError === "object" &&
+    driverAdapterError !== null &&
+    "cause" in driverAdapterError
+      ? driverAdapterError.cause
+      : undefined;
+  const constraint =
+    typeof cause === "object" && cause !== null && "constraint" in cause
+      ? cause.constraint
+      : undefined;
+  const fields =
+    typeof constraint === "object" &&
+    constraint !== null &&
+    "fields" in constraint
+      ? constraint.fields
+      : undefined;
+  const targetText = [target, constraint, fields]
+    .flatMap((value) =>
+      Array.isArray(value) ? value : typeof value === "string" ? [value] : [],
+    )
+    .join(" ")
+    .toLowerCase();
+
+  if (targetText.includes("nic")) return "nic";
+  if (
+    targetText.includes("customerphone") ||
+    targetText.includes("normalizedphone")
+  )
+    return "phone";
+  if (targetText.includes("mobile")) return "mobile";
+
+  return null;
+}
+
+function hasPrismaCode(error: unknown, code: string) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === code
+  );
+}
+
+export async function createCustomer(
+  _previousState: CustomerRegistrationState,
+  formData: FormData,
+): Promise<CustomerRegistrationState> {
   await requireUser();
   const fullName = String(formData.get("fullName") ?? "").trim();
-  const nic = String(formData.get("nic") ?? "")
-    .trim()
-    .toUpperCase();
-  const mobile = String(formData.get("mobile") ?? "").trim();
-  const additionalMobile = String(
-    formData.get("additionalMobile") ?? "",
-  ).trim();
+  const nic = normalizeNic(String(formData.get("nic") ?? ""));
+  const mobile = normalizePhone(String(formData.get("mobile") ?? ""));
+  const additionalMobile = normalizePhone(
+    String(formData.get("additionalMobile") ?? ""),
+  );
   const address = String(formData.get("address") ?? "").trim();
   const area = String(formData.get("area") ?? "").trim();
   const guarantorDetails = String(
     formData.get("guarantorDetails") ?? "",
   ).trim();
   const notes = String(formData.get("notes") ?? "").trim();
-  const valid =
-    fullName.length >= 2 &&
-    fullName.length <= 150 &&
-    nic.length >= 5 &&
-    nic.length <= 20 &&
-    /^[A-Za-z0-9-]+$/.test(nic) &&
-    mobile.length >= 7 &&
-    mobile.length <= 20 &&
-    /^[0-9+()\-\s]+$/.test(mobile) &&
-    address.length >= 3 &&
-    address.length <= 500 &&
-    area.length <= 150 &&
-    guarantorDetails.length <= 2000 &&
-    notes.length <= 2000;
-  if (!valid) {
-    redirect("/customers?error=invalid");
+  const fieldErrors: CustomerRegistrationState["fieldErrors"] = {};
+
+  if (fullName.length < 2 || fullName.length > 150) {
+    fieldErrors.fullName = "Enter a customer name between 2 and 150 characters.";
   }
+  if (!isValidNic(nic)) {
+    fieldErrors.nic = NIC_ERROR;
+  }
+  if (!isValidPrimaryMobile(mobile)) {
+    fieldErrors.mobile = PRIMARY_MOBILE_ERROR;
+  }
+  if (!isValidAdditionalMobile(additionalMobile)) {
+    fieldErrors.additionalMobile = ADDITIONAL_MOBILE_ERROR;
+  }
+  if (additionalMobile && additionalMobile === mobile) {
+    fieldErrors.additionalMobile =
+      "Primary and additional mobile numbers must be different.";
+  }
+  if (address.length < 3 || address.length > 500) {
+    fieldErrors.address = "Enter an address between 3 and 500 characters.";
+  }
+  if (area.length > 150) {
+    fieldErrors.area = "Collection area must be 150 characters or fewer.";
+  }
+  if (guarantorDetails.length > 2000) {
+    fieldErrors.guarantorDetails =
+      "Guarantor details must be 2,000 characters or fewer.";
+  }
+  if (notes.length > 2000) {
+    fieldErrors.notes = "Notes must be 2,000 characters or fewer.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { fieldErrors };
+  }
+
   try {
-    await prisma.customer.create({
-      data: {
-        fullName,
-        nic,
-        mobile,
-        additionalMobile: additionalMobile || null,
-        address,
-        area: area || null,
-        guarantorDetails: guarantorDetails || null,
-        notes: notes || null,
-      },
-    });
-  } catch (error: unknown) {
-    const isDuplicate =
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "P2002";
-    if (isDuplicate) {
-      redirect("/customers?error=duplicate");
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await prisma.$transaction(
+          async (tx) => {
+            const phoneNumbers = [mobile, additionalMobile].filter(Boolean);
+            const [nicOwner, phoneOwners] =
+              await Promise.all([
+                tx.customer.findUnique({
+                  where: { nic },
+                  select: { id: true },
+                }),
+                tx.customerPhone.findMany({
+                  where: customerPhoneOwnershipWhere(phoneNumbers),
+                  select: { normalizedPhone: true },
+                }),
+              ]);
+            const ownedPhones = new Set(
+              phoneOwners.map((owner) => owner.normalizedPhone),
+            );
+
+            const duplicateErrors: NonNullable<
+              CustomerRegistrationState["fieldErrors"]
+            > = {};
+
+            if (nicOwner) {
+              duplicateErrors.nic = "This NIC number is already registered.";
+            }
+            if (ownedPhones.has(mobile)) {
+              duplicateErrors.mobile =
+                "This mobile number is already registered.";
+            }
+            if (additionalMobile && ownedPhones.has(additionalMobile)) {
+              duplicateErrors.additionalMobile =
+                "This additional mobile number is already registered.";
+            }
+            if (Object.keys(duplicateErrors).length > 0) {
+              throw new CustomerRegistrationConflict(duplicateErrors);
+            }
+
+            await tx.customer.create({
+              data: {
+                fullName,
+                nic,
+                mobile,
+                additionalMobile: additionalMobile || null,
+                address,
+                area: area || null,
+                guarantorDetails: guarantorDetails || null,
+                notes: notes || null,
+              },
+            });
+          },
+          { isolationLevel: "Serializable" },
+        );
+        break;
+      } catch (error: unknown) {
+        if (hasPrismaCode(error, "P2034") && attempt < 2) continue;
+        throw error;
+      }
     }
+  } catch (error: unknown) {
+    if (error instanceof CustomerRegistrationConflict) {
+      return { fieldErrors: error.fieldErrors };
+    }
+    const duplicateField = getUniqueCustomerField(error);
+
+    if (duplicateField === "nic") {
+      return {
+        fieldErrors: { nic: "This NIC number is already registered." },
+      };
+    }
+    if (duplicateField === "mobile") {
+      return {
+        fieldErrors: { mobile: "This mobile number is already registered." },
+      };
+    }
+    if (duplicateField === "phone") {
+      return {
+        formError:
+          "A primary or additional mobile number is already assigned to another customer.",
+      };
+    }
+    if (hasPrismaCode(error, "P2002")) {
+      return {
+        formError:
+          "A customer with this NIC or mobile number is already registered.",
+      };
+    }
+
     console.error("Customer creation failed.");
-    redirect("/customers?error=failed");
+    return {
+      formError: "Unable to register the customer. Please try again.",
+    };
   }
+
   revalidatePath("/customers");
   redirect("/customers?created=1");
 }
@@ -113,13 +305,12 @@ export async function createSaleRegistration(
   const session = await requireUser();
   const billNumber = String(formData.get("billNumber") ?? "").trim();
   const fullName = String(formData.get("fullName") ?? "").trim();
-  const nic = String(formData.get("nic") ?? "")
-    .trim()
-    .toUpperCase();
-  const mobile = String(formData.get("mobile") ?? "").trim();
-  const additionalMobile = String(
-    formData.get("additionalMobile") ?? "",
-  ).trim();
+  const contactValidation = validateCustomerContact({
+    nic: String(formData.get("nic") ?? ""),
+    mobile: String(formData.get("mobile") ?? ""),
+    additionalMobile: String(formData.get("additionalMobile") ?? ""),
+  });
+  const { nic, mobile, additionalMobile } = contactValidation.normalized;
   const address = String(formData.get("address") ?? "").trim();
   const area = String(formData.get("area") ?? "").trim();
   const guarantorDetails = String(
@@ -223,16 +414,12 @@ export async function createSaleRegistration(
     /^[A-Za-z0-9/-]+$/.test(billNumber) &&
     fullName.length >= 2 &&
     fullName.length <= 150 &&
-    nic.length >= 5 &&
-    nic.length <= 20 &&
-    /^[A-Z0-9-]+$/.test(nic) &&
-    mobile.length >= 7 &&
-    mobile.length <= 10 &&
-    /^[0-9]{7,10}$/.test(mobile) &&
+    !contactValidation.nicError &&
+    !contactValidation.mobileError &&
     address.length >= 3 &&
     address.length <= 500 &&
     area.length <= 150 &&
-    (additionalMobile === "" || /^[0-9]{7,10}$/.test(additionalMobile)) &&
+    !contactValidation.additionalMobileError &&
     guarantorDetails.length <= 2000 &&
     notes.length <= 2000 &&
     advanceCents !== null &&
@@ -271,7 +458,9 @@ export async function createSaleRegistration(
     return { error: "installment" };
   }
   try {
-    await prisma.$transaction(async (tx) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await prisma.$transaction(async (tx) => {
       const saleItems: {
         productId: string;
         productBrandId: string | null;
@@ -394,11 +583,14 @@ export async function createSaleRegistration(
       } else {
         // Never create a second master record with an already-owned unique
         // identifier. Staff must select the existing identity or resolve it.
-        const owner = await tx.customer.findFirst({
-          where: { OR: [{ nic }, { mobile }] },
-          select: { id: true },
-        });
-        if (owner) throw new Error("CUSTOMER_CONFLICT");
+        const [nicOwner, phoneOwner] = await Promise.all([
+          tx.customer.findUnique({ where: { nic }, select: { id: true } }),
+          tx.customerPhone.findFirst({
+            where: customerPhoneOwnershipWhere([mobile, additionalMobile]),
+            select: { id: true },
+          }),
+        ]);
+        if (nicOwner || phoneOwner) throw new Error("CUSTOMER_CONFLICT");
         const customer = await tx.customer.create({
           data: {
             fullName,
@@ -461,8 +653,18 @@ export async function createSaleRegistration(
             }),
           },
         },
-      });
-    });
+        });
+        }, {
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 15000,
+        });
+        break;
+      } catch (error) {
+        if (hasPrismaCode(error, "P2034") && attempt < 2) continue;
+        throw error;
+      }
+    }
   } catch (error: unknown) {
     if (error instanceof Error) {
       if (error.message === "CUSTOMER_UNAVAILABLE") {
@@ -488,6 +690,9 @@ export async function createSaleRegistration(
       }
       if (error.message === "EMPLOYEE_UNAVAILABLE") {
         return { error: "employee" };
+      }
+      if (getUniqueCustomerField(error)) {
+        return { error: "customer-conflict" };
       }
       if ("code" in error && error.code === "P2002") {
         return { error: "duplicate" };
@@ -553,21 +758,21 @@ export async function checkSaleCustomerRecords(
   const billNumber = String(rawInput.billNumber ?? "").trim();
   const fullName = String(rawInput.fullName ?? "").trim();
   const address = String(rawInput.address ?? "").trim();
-  const nic = String(rawInput.nic ?? "")
-    .trim()
-    .toUpperCase();
-  const mobile = String(rawInput.mobile ?? "").trim();
-  const additionalMobile = String(rawInput.additionalMobile ?? "").trim();
-  const phonePattern = /^[0-9]{7,10}$/;
+  const contactValidation = validateCustomerContact({
+    nic: String(rawInput.nic ?? ""),
+    mobile: String(rawInput.mobile ?? ""),
+    additionalMobile: String(rawInput.additionalMobile ?? ""),
+  });
+  const { nic, mobile, additionalMobile } = contactValidation.normalized;
   if (
     !/^[A-Za-z0-9/-]{1,50}$/.test(billNumber) ||
     fullName.length < 2 ||
     fullName.length > 150 ||
     address.length < 3 ||
     address.length > 500 ||
-    !/^[A-Z0-9-]{5,20}$/.test(nic) ||
-    !phonePattern.test(mobile) ||
-    (additionalMobile !== "" && !phonePattern.test(additionalMobile))
+    Boolean(contactValidation.nicError) ||
+    Boolean(contactValidation.mobileError) ||
+    Boolean(contactValidation.additionalMobileError)
   ) {
     return {
       ...emptyResult,
@@ -884,7 +1089,7 @@ function normalizeVerifiedRecord(input: VerifiedRecord): VerifiedRecord {
     billNumber: input.billNumber.trim(),
     fullName: input.fullName.trim(),
     address: input.address.trim(),
-    nic: input.nic.trim().toUpperCase(),
+    nic: normalizeNic(input.nic),
     mobile: input.mobile.trim(),
     additionalMobile: input.additionalMobile.trim(),
   };
@@ -980,16 +1185,20 @@ export async function confirmSaleCustomerRecord(
     additionalMobile: effective.additionalMobile ?? "",
   });
   // Validate the effective details too, not only the originally entered values.
+  const contactValidation = validateCustomerContact({
+    nic: record.nic,
+    mobile: record.mobile,
+    additionalMobile: record.additionalMobile,
+  });
   if (
     !/^[A-Za-z0-9/-]{1,50}$/.test(record.billNumber) ||
     record.fullName.length < 2 ||
     record.fullName.length > 150 ||
     record.address.length < 3 ||
     record.address.length > 500 ||
-    !/^[A-Z0-9-]{5,20}$/.test(record.nic) ||
-    !/^[0-9]{7,10}$/.test(record.mobile) ||
-    (record.additionalMobile !== "" &&
-      !/^[0-9]{7,10}$/.test(record.additionalMobile))
+    Boolean(contactValidation.nicError) ||
+    Boolean(contactValidation.mobileError) ||
+    Boolean(contactValidation.additionalMobileError)
   )
     return {
       success: false,

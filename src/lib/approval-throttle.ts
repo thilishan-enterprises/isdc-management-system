@@ -1,0 +1,9 @@
+export const ADMIN_APPROVAL_ATTEMPT_LIMIT = 5;
+export const ADMIN_APPROVAL_WINDOW_MS = 15 * 60_000;
+export const ADMIN_APPROVAL_ATTEMPT = "CUSTOMER_ADMIN_APPROVAL_ATTEMPT";
+export const ADMIN_APPROVAL_FAILED = "CUSTOMER_ADMIN_APPROVAL_FAILED";
+export const ADMIN_APPROVAL_SUCCEEDED = "CUSTOMER_ADMIN_APPROVAL_SUCCEEDED";
+
+export function approvalWindowStart(now = new Date()) {
+  return new Date(now.getTime() - ADMIN_APPROVAL_WINDOW_MS);
+}

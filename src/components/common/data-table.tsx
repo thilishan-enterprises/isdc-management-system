@@ -1,3 +1,4 @@
+//
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -36,7 +37,13 @@ type DataTableProps = {
   title?: string;
   description?: string;
   actions?: ReactNode;
+
   exportAllHref?: string;
+
+  // Server endpoint for exporting selected records
+  // across multiple pages.
+  exportSelectedHref?: string;
+
   searchable?: boolean;
   searchPlaceholder?: string;
   filters?: DataTableFilter[];
@@ -88,6 +95,7 @@ export function DataTable({
   selectable = false,
   exportRows,
   exportAllHref,
+  exportSelectedHref,
   exportFilename = "records.csv",
   selectionActions = [],
   showExportSelected = true,
@@ -119,7 +127,7 @@ export function DataTable({
         <Link
           href={sortHref(column.key, nextDirection)}
           scroll={false}
-          className="inline-flex items-center gap-1.5 hover:text-foreground"
+          className="inline-flex cursor-pointer items-center gap-1.5 hover:text-foreground"
         >
           {column.header}
 
@@ -140,8 +148,10 @@ export function DataTable({
   return (
     <div
       className={[
-        "min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm",
-        fillHeight ? "flex min-h-0 flex-1 flex-col" : "",
+        "min-w-0 overflow-hidden border border-border/70 bg-card shadow-sm",
+        fillHeight
+          ? "flex min-h-0 flex-1 flex-col rounded-xl"
+          : "rounded-xl",
       ].join(" ")}
     >
       {(title || description || actions) && (
@@ -177,6 +187,7 @@ export function DataTable({
         selectable={selectable}
         exportRows={exportRows}
         exportAllHref={exportAllHref}
+        exportSelectedHref={exportSelectedHref}
         exportFilename={exportFilename}
         selectionActions={selectionActions}
         showExportSelected={showExportSelected}
@@ -227,7 +238,7 @@ export function DataTable({
               <ChevronLeft className="size-4" />
             </Link>
           ) : (
-            <span className="inline-flex size-8 items-center justify-center rounded-lg border border-border/60 text-muted-foreground/40">
+            <span className="inline-flex size-8 cursor-not-allowed items-center justify-center rounded-lg border border-border/60 text-muted-foreground/40">
               <ChevronLeft className="size-4" />
             </span>
           )}
@@ -242,7 +253,7 @@ export function DataTable({
               <ChevronRight className="size-4" />
             </Link>
           ) : (
-            <span className="inline-flex size-8 items-center justify-center rounded-lg border border-border/60 text-muted-foreground/40">
+            <span className="inline-flex size-8 cursor-not-allowed items-center justify-center rounded-lg border border-border/60 text-muted-foreground/40">
               <ChevronRight className="size-4" />
             </span>
           )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronRight, LogOut, UserRound } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -17,6 +17,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import type { AppRole } from "@/lib/navigation";
+import { getAppHeaderMetadata } from "@/lib/app-header-metadata";
+import { useAppHeaderDetails } from "@/components/layout/app-header-details";
 
 type AppHeaderProps = {
   username: string;
@@ -25,6 +27,11 @@ type AppHeaderProps = {
 
 export function AppHeader({ username, role }: AppHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const pageDetails = useAppHeaderDetails(pathname);
+  const metadata = getAppHeaderMetadata(pathname);
+  const title = pageDetails?.title ?? metadata.title;
+  const subtitle = pageDetails?.subtitle ?? metadata.subtitle;
 
   const initials =
     username
@@ -42,20 +49,29 @@ export function AppHeader({ username, role }: AppHeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-      <SidebarTrigger className="-ml-1" />
+    <header className="sticky top-0 z-30 flex h-18 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
+      <SidebarTrigger />
 
       <Separator orientation="vertical" className="mr-1 h-5" />
 
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-        <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-          Welcome back, {username}
-          <span className="ml-1.5">👋</span>
-        </h1>
+        <div className="flex min-w-0 items-center gap-2">
+          <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+            {title}
+          </h1>
 
-        <p className="hidden truncate text-xs text-muted-foreground sm:block">
-          Manage your sales, collections, inventory and customers in one place.
-        </p>
+          {typeof pageDetails?.count === "number" && (
+            <span className="inline-flex max-w-[45vw] shrink-0 items-center truncate rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground sm:max-w-none sm:px-2.5 sm:py-1 sm:text-xs">
+              {pageDetails.count.toLocaleString("en-LK")} {pageDetails.countLabel}
+            </span>
+          )}
+        </div>
+
+        {subtitle && (
+          <p className="hidden truncate text-xs text-muted-foreground sm:block">
+            {subtitle}
+          </p>
+        )}
       </div>
 
       <ThemeToggle />

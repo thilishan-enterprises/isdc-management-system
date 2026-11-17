@@ -5,6 +5,15 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-guards";
 import { revalidatePath } from "next/cache";
+import { validateCustomerContact } from "@/lib/customer-contact";
+import { customerPhoneOwnershipWhere } from "@/lib/customer-ownership";
+import {
+  ADMIN_APPROVAL_ATTEMPT,
+  ADMIN_APPROVAL_ATTEMPT_LIMIT,
+  ADMIN_APPROVAL_FAILED,
+  ADMIN_APPROVAL_SUCCEEDED,
+  approvalWindowStart,
+} from "@/lib/approval-throttle";
 
 export type BlockedCustomer = {
   id: string;
@@ -26,6 +35,42 @@ type DeleteCustomersInput = {
   customerIds: string[];
   adminPassword?: string;
 };
+
+async function reserveAdminApprovalAttempt(userId: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`customer-admin-approval:${userId}`}))`;
+    const attempts = await tx.auditLog.count({
+      where: {
+        userId,
+        action: { in: [ADMIN_APPROVAL_ATTEMPT, ADMIN_APPROVAL_FAILED] },
+        createdAt: { gte: approvalWindowStart() },
+      },
+    });
+    if (attempts >= ADMIN_APPROVAL_ATTEMPT_LIMIT) return null;
+    return tx.auditLog.create({
+      data: {
+        userId,
+        action: ADMIN_APPROVAL_ATTEMPT,
+        entityType: "Security",
+        entityId: userId,
+        reason: "Customer mutation administrator approval attempted",
+      },
+      select: { id: true },
+    });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+async function finalizeAdminApprovalAttempt(id: string, userId: string, approved: boolean) {
+  await prisma.auditLog.updateMany({
+    where: { id, userId, action: ADMIN_APPROVAL_ATTEMPT },
+    data: {
+      action: approved ? ADMIN_APPROVAL_SUCCEEDED : ADMIN_APPROVAL_FAILED,
+      reason: approved
+        ? "Customer mutation administrator approval succeeded"
+        : "Customer mutation administrator approval failed",
+    },
+  });
+}
 
 async function authorizeCustomerMutation(userId: string, password?: string) {
   const actor = await prisma.user.findUnique({
@@ -55,30 +100,45 @@ async function authorizeCustomerMutation(userId: string, password?: string) {
     };
   }
 
-  if (!password || password.length > 1024) {
+  if (!password) {
     return null;
   }
 
-  const admins = await prisma.user.findMany({
-    where: {
-      role: "ADMIN",
-      isActive: true,
-      OR: [{ employeeId: null }, { employee: { isActive: true } }],
-    },
-    select: {
-      id: true,
-      passwordHash: true,
-    },
-  });
-
-  for (const admin of admins) {
-    if (await bcrypt.compare(password, admin.passwordHash)) {
-      return {
-        actorId: actor.id,
-        approvedById: admin.id,
-      };
-    }
+  const attempt = await reserveAdminApprovalAttempt(actor.id).catch(() => null);
+  if (!attempt) return null;
+  if (password.length > 1024) {
+    await finalizeAdminApprovalAttempt(attempt.id, actor.id, false);
+    return null;
   }
+
+  try {
+    const admins = await prisma.user.findMany({
+      where: {
+        role: "ADMIN",
+        isActive: true,
+        OR: [{ employeeId: null }, { employee: { isActive: true } }],
+      },
+      select: {
+        id: true,
+        passwordHash: true,
+      },
+    });
+
+    for (const admin of admins) {
+      if (await bcrypt.compare(password, admin.passwordHash)) {
+        await finalizeAdminApprovalAttempt(attempt.id, actor.id, true);
+        return {
+          actorId: actor.id,
+          approvedById: admin.id,
+        };
+      }
+    }
+  } catch {
+    await finalizeAdminApprovalAttempt(attempt.id, actor.id, false).catch(() => undefined);
+    return null;
+  }
+
+  await finalizeAdminApprovalAttempt(attempt.id, actor.id, false);
 
   return null;
 }
@@ -214,8 +274,8 @@ export async function deleteCustomers(
       deletedCount: result.deletedCount,
       blocked: result.blocked,
     };
-  } catch (error) {
-    console.error("Customer deletion failed:", error);
+  } catch {
+    console.error("Customer deletion failed.");
 
     return {
       success: false,
@@ -326,13 +386,13 @@ export async function updateCustomer(
   const id = typeof input.id === "string" ? input.id.trim() : "";
   const fullName =
     typeof input.fullName === "string" ? input.fullName.trim() : "";
-  const nic =
-    typeof input.nic === "string" ? input.nic.trim().toUpperCase() : "";
-  const mobile = typeof input.mobile === "string" ? input.mobile.trim() : "";
-  const additionalMobile =
-    typeof input.additionalMobile === "string"
-      ? input.additionalMobile.trim()
-      : "";
+  const contactValidation = validateCustomerContact({
+    nic: typeof input.nic === "string" ? input.nic : "",
+    mobile: typeof input.mobile === "string" ? input.mobile : "",
+    additionalMobile:
+      typeof input.additionalMobile === "string" ? input.additionalMobile : "",
+  });
+  const { nic, mobile, additionalMobile } = contactValidation.normalized;
   const address = typeof input.address === "string" ? input.address.trim() : "";
   const area = typeof input.area === "string" ? input.area.trim() : "";
   const guarantorDetails =
@@ -346,9 +406,9 @@ export async function updateCustomer(
     id.length > 100 ||
     fullName.length < 2 ||
     fullName.length > 150 ||
-    !/^[A-Z0-9-]{5,20}$/.test(nic) ||
-    !/^[0-9]{7,10}$/.test(mobile) ||
-    (additionalMobile !== "" && !/^[0-9]{7,10}$/.test(additionalMobile)) ||
+    Boolean(contactValidation.nicError) ||
+    Boolean(contactValidation.mobileError) ||
+    Boolean(contactValidation.additionalMobileError) ||
     address.length < 3 ||
     address.length > 500 ||
     area.length > 150 ||
@@ -374,7 +434,9 @@ export async function updateCustomer(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await prisma.$transaction(async (tx) => {
       const existing = await tx.customer.findUnique({
         where: { id },
       });
@@ -383,15 +445,18 @@ export async function updateCustomer(
         throw new Error("CUSTOMER_NOT_FOUND");
       }
 
-      const duplicate = await tx.customer.findFirst({
-        where: {
-          id: { not: id },
-          OR: [{ nic }, { mobile }],
-        },
-        select: { id: true },
-      });
+      const [nicOwner, phoneOwner] = await Promise.all([
+        tx.customer.findFirst({
+          where: { id: { not: id }, nic },
+          select: { id: true },
+        }),
+        tx.customerPhone.findFirst({
+          where: customerPhoneOwnershipWhere([mobile, additionalMobile], id),
+          select: { id: true },
+        }),
+      ]);
 
-      if (duplicate) {
+      if (nicOwner || phoneOwner) {
         throw new Error("DUPLICATE_CUSTOMER");
       }
 
@@ -442,7 +507,25 @@ export async function updateCustomer(
           },
         },
       });
-    });
+        }, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5000,
+          timeout: 15000,
+        });
+        break;
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "P2034" &&
+          attempt < 2
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
 
     revalidatePath("/customers");
 
