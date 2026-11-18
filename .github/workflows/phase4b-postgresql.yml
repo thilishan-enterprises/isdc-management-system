@@ -51,7 +51,12 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
+        id: install
         run: npm ci
+
+      - name: Verify PostgreSQL test dependency
+        id: verify_pg
+        run: node --input-type=module -e "await import('pg')"
 
       - name: Prepare focused Phase 4B database
         env:
@@ -70,7 +75,7 @@ jobs:
         run: npm run test:customers-application
 
       - name: Remove focused Phase 4B database
-        if: always()
+        if: always() && steps.install.outcome == 'success' && steps.verify_pg.outcome == 'success'
         env:
           TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_focused_test
         run: node scripts/prepare-ci-test-database.mjs drop
@@ -86,7 +91,7 @@ jobs:
         run: npm run test:customers-application
 
       - name: Remove complete Phase 4B database
-        if: always()
+        if: always() && steps.install.outcome == 'success' && steps.verify_pg.outcome == 'success'
         env:
           TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_complete_test
         run: node scripts/prepare-ci-test-database.mjs drop
@@ -107,7 +112,7 @@ jobs:
         run: npm run test:phone-registry
 
       - name: Remove Phase 4A database
-        if: always()
+        if: always() && steps.install.outcome == 'success' && steps.verify_pg.outcome == 'success'
         env:
           TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4a_test
         run: node scripts/prepare-ci-test-database.mjs drop
