@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppHeaderDetailsProvider } from "@/components/layout/app-header-details";
 import { AppMain } from "@/components/layout/app-main";
+import { UnsavedChangesGuard } from "@/components/common/unsaved-changes-guard";
 import type { AppRole } from "@/lib/navigation";
 
 type AppLayoutProps = {
@@ -35,15 +36,17 @@ async function AuthenticatedWorkspace({ children }: AppLayoutProps) {
 
   return (
     <SidebarProvider className="h-svh min-h-0 overflow-hidden">
-      <AppHeaderDetailsProvider>
-        <AppSidebar role={role} username={username} />
+      <UnsavedChangesGuard>
+        <AppHeaderDetailsProvider>
+          <AppSidebar role={role} username={username} />
 
-        <SidebarInset className="h-svh min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
-          <AppHeader username={username} role={role} />
+          <SidebarInset className="h-svh min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
+            <AppHeader username={username} role={role} />
 
-          <AppMain>{children}</AppMain>
-        </SidebarInset>
-      </AppHeaderDetailsProvider>
+            <AppMain>{children}</AppMain>
+          </SidebarInset>
+        </AppHeaderDetailsProvider>
+      </UnsavedChangesGuard>
     </SidebarProvider>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { UnsavedChangesLink } from "@/components/common/unsaved-changes-guard";
 
 import {
   Sidebar,
@@ -91,7 +91,7 @@ export function AppSidebar({ role, username }: AppSidebarProps) {
                         }
                       >
                         <SidebarMenuButton
-                          render={<Link href={item.href} />}
+                          render={<UnsavedChangesLink href={item.href} />}
                           isActive={isActive}
                           tooltip={item.title}
                           className="

@@ -37,27 +37,46 @@ type DeleteCustomersInput = {
 };
 
 async function reserveAdminApprovalAttempt(userId: string) {
-  return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`customer-admin-approval:${userId}`}))`;
-    const attempts = await tx.auditLog.count({
-      where: {
-        userId,
-        action: { in: [ADMIN_APPROVAL_ATTEMPT, ADMIN_APPROVAL_FAILED] },
-        createdAt: { gte: approvalWindowStart() },
-      },
-    });
-    if (attempts >= ADMIN_APPROVAL_ATTEMPT_LIMIT) return null;
-    return tx.auditLog.create({
-      data: {
-        userId,
-        action: ADMIN_APPROVAL_ATTEMPT,
-        entityType: "Security",
-        entityId: userId,
-        reason: "Customer mutation administrator approval attempted",
-      },
-      select: { id: true },
-    });
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  for (let transactionAttempt = 1; transactionAttempt <= 3; transactionAttempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT 1::integer AS "acquired"
+          FROM pg_advisory_xact_lock(
+            hashtext(${`customer-admin-approval:${userId}`})
+          )
+        `;
+        const attempts = await tx.auditLog.count({
+          where: {
+            userId,
+            action: { in: [ADMIN_APPROVAL_ATTEMPT, ADMIN_APPROVAL_FAILED] },
+            createdAt: { gte: approvalWindowStart() },
+          },
+        });
+        if (attempts >= ADMIN_APPROVAL_ATTEMPT_LIMIT) return null;
+        return tx.auditLog.create({
+          data: {
+            userId,
+            action: ADMIN_APPROVAL_ATTEMPT,
+            entityType: "Security",
+            entityId: userId,
+            reason: "Customer mutation administrator approval attempted",
+          },
+          select: { id: true },
+        });
+      });
+    } catch (error) {
+      const { prismaCode, sqlState } = approvalInfrastructureCodes(error);
+      const retryable =
+        prismaCode === "P2034" ||
+        (prismaCode === "P2039" && sqlState === "25001");
+      if (!retryable || transactionAttempt === 3) throw error;
+      console.error(
+        `Customer administrator approval reservation retry ${transactionAttempt} of 2.`,
+      );
+    }
+  }
+  throw new Error("APPROVAL_RESERVATION_RETRY_EXHAUSTED");
 }
 
 async function finalizeAdminApprovalAttempt(id: string, userId: string, approved: boolean) {
@@ -70,6 +89,16 @@ async function finalizeAdminApprovalAttempt(id: string, userId: string, approved
         : "Customer mutation administrator approval failed",
     },
   });
+}
+
+function approvalInfrastructureCodes(error: unknown) {
+  if (typeof error !== "object" || error === null) return {};
+  const prismaCode = "code" in error && typeof error.code === "string" ? error.code : undefined;
+  const meta = "meta" in error && typeof error.meta === "object" && error.meta !== null ? error.meta : undefined;
+  const driverError = meta && "driverAdapterError" in meta && typeof meta.driverAdapterError === "object" && meta.driverAdapterError !== null ? meta.driverAdapterError : undefined;
+  const cause = driverError && "cause" in driverError && typeof driverError.cause === "object" && driverError.cause !== null ? driverError.cause : undefined;
+  const sqlState = cause && "originalCode" in cause && typeof cause.originalCode === "string" ? cause.originalCode : undefined;
+  return { prismaCode, sqlState };
 }
 
 async function authorizeCustomerMutation(userId: string, password?: string) {
@@ -104,7 +133,16 @@ async function authorizeCustomerMutation(userId: string, password?: string) {
     return null;
   }
 
-  const attempt = await reserveAdminApprovalAttempt(actor.id).catch(() => null);
+  let attempt: Awaited<ReturnType<typeof reserveAdminApprovalAttempt>>;
+  try {
+    attempt = await reserveAdminApprovalAttempt(actor.id);
+  } catch (error) {
+    const { prismaCode, sqlState } = approvalInfrastructureCodes(error);
+    console.error(
+      `Customer administrator approval infrastructure failed. Prisma code: ${prismaCode ?? "unknown"}; SQLSTATE: ${sqlState ?? "unknown"}.`,
+    );
+    return null;
+  }
   if (!attempt) return null;
   if (password.length > 1024) {
     await finalizeAdminApprovalAttempt(attempt.id, actor.id, false);

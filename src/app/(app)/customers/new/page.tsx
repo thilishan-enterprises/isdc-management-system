@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState, useRef, useState } from "react";
 import {
   createCustomer,
@@ -14,6 +13,11 @@ import { AppTextarea } from "@/components/common/app-textarea";
 import { FormField } from "@/components/common/form-field";
 import { FormSectionTitle } from "@/components/common/form-section-title";
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog";
+import { UnsavedChangesLink } from "@/components/common/unsaved-changes-guard";
+import {
+  useFormDirtyState,
+  useUnsavedChanges,
+} from "@/hooks/use-unsaved-changes";
 import {
   ADDITIONAL_MOBILE_ERROR,
   NIC_ERROR,
@@ -45,13 +49,13 @@ export default function NewCustomerPage() {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link
+        <UnsavedChangesLink
           href="/customers"
           className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
         >
           <ArrowLeft className="size-4" />
           Go Back
-        </Link>
+        </UnsavedChangesLink>
 
         <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/70 bg-muted/30 px-2.5 text-xs text-muted-foreground">
           <UserRound className="size-3.5" aria-hidden="true" />
@@ -69,7 +73,8 @@ export default function NewCustomerPage() {
 
 function CustomerRegistrationForm({ onReset }: { onReset: () => void }) {
   const [values, setValues] = useState(initialValues);
-  const [isDirty, setIsDirty] = useState(false);
+  const isDirty = useFormDirtyState(initialValues, values);
+  useUnsavedChanges(isDirty, { onDiscard: onReset });
   const [correctedFields, setCorrectedFields] = useState<
     Set<CustomerRegistrationField>
   >(new Set());
@@ -141,7 +146,6 @@ function CustomerRegistrationForm({ onReset }: { onReset: () => void }) {
           setHideFormError(false);
         }}
         onInput={(event) => {
-          setIsDirty(true);
           setHideFormError(true);
 
           const fieldName = (event.target as HTMLInputElement).name;
@@ -388,12 +392,12 @@ function CustomerRegistrationForm({ onReset }: { onReset: () => void }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
+            <UnsavedChangesLink
               href="/customers"
               className="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-muted"
             >
               Cancel
-            </Link>
+            </UnsavedChangesLink>
 
             <Button
               type="button"

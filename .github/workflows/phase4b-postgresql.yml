@@ -1,0 +1,130 @@
+name: Phase 4B PostgreSQL Integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase4b-postgresql-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  customers-postgresql:
+    name: Customers PostgreSQL 16 verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: phase4b_ci
+          POSTGRES_PASSWORD: phase4b-ci-password-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U phase4b_ci -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_build_test
+      TEST_DATABASE_ADMIN_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/postgres
+      AUTH_SECRET: phase4b-ci-auth-secret-not-for-any-deployed-environment
+      IMPORT_SIGNING_SECRET: phase4b-ci-import-secret-not-for-any-deployed-environment
+      AUTH_TRUST_HOST: "true"
+      PHASE4B_TEST_PORT: "3419"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Prepare focused Phase 4B database
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_focused_test
+        run: node scripts/prepare-ci-test-database.mjs recreate
+
+      - name: Build application for authenticated integration tests
+        env:
+          DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_focused_test
+        run: npm run build
+
+      - name: Run focused authenticated approval concurrency tests
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_focused_test
+          PHASE4B_FOCUSED: "1"
+        run: npm run test:customers-application
+
+      - name: Remove focused Phase 4B database
+        if: always()
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_focused_test
+        run: node scripts/prepare-ci-test-database.mjs drop
+
+      - name: Prepare complete Phase 4B database
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_complete_test
+        run: node scripts/prepare-ci-test-database.mjs recreate
+
+      - name: Run complete Phase 4B authenticated integration tests
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_complete_test
+        run: npm run test:customers-application
+
+      - name: Remove complete Phase 4B database
+        if: always()
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_complete_test
+        run: node scripts/prepare-ci-test-database.mjs drop
+
+      - name: Prepare Phase 4A database
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4a_test
+        run: node scripts/prepare-ci-test-database.mjs recreate
+
+      - name: Run Phase 4A PostgreSQL integration tests
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4a_test
+        run: npm run test:customers-integration
+
+      - name: Run CustomerPhone migration integration tests
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4a_test
+        run: npm run test:phone-registry
+
+      - name: Remove Phase 4A database
+        if: always()
+        env:
+          TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4a_test
+        run: node scripts/prepare-ci-test-database.mjs drop
+
+      - name: Run unit tests
+        run: npm run test:import
+
+      - name: Validate Prisma schema
+        run: npm exec prisma -- validate --config prisma7.config.ts
+
+      - name: Check TypeScript
+        run: npm exec tsc -- --noEmit
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run final production build
+        env:
+          DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/postgres
+        run: npm run build

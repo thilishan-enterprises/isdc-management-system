@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import type { AppRole } from "@/lib/navigation";
 import { getAppHeaderMetadata } from "@/lib/app-header-metadata";
 import { useAppHeaderDetails } from "@/components/layout/app-header-details";
+import { useUnsavedChangesGuard } from "@/components/common/unsaved-changes-guard";
 
 type AppHeaderProps = {
   username: string;
@@ -27,6 +28,7 @@ type AppHeaderProps = {
 
 export function AppHeader({ username, role }: AppHeaderProps) {
   const router = useRouter();
+  const { requestNavigation } = useUnsavedChangesGuard();
   const pathname = usePathname();
   const pageDetails = useAppHeaderDetails(pathname);
   const metadata = getAppHeaderMetadata(pathname);
@@ -42,10 +44,14 @@ export function AppHeader({ username, role }: AppHeaderProps) {
       .slice(0, 2)
       .toUpperCase() || "US";
 
-  async function handleSignOut() {
+  async function performSignOut() {
     await signOut({ redirect: false });
     router.replace("/login");
     router.refresh();
+  }
+
+  function handleSignOut() {
+    requestNavigation(performSignOut);
   }
 
   return (
