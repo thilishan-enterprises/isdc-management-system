@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:import": "node --import ./scripts/tsx-userinfo-fallback.mjs --import tsx --test src/lib/import/import.test.ts",
     "test:unsaved-changes": "node --import ./scripts/tsx-userinfo-fallback.mjs --import tsx --test src/hooks/use-unsaved-changes.test.ts src/components/common/unsaved-changes-guard.test.ts",
+    "test:ci-database-safety": "node --test scripts/ci-database-safety.test.mjs",
     "test:phone-registry": "node scripts/test-customer-phone-registry.mjs",
     "test:customers-integration": "node scripts/test-customers-integration.mjs",
     "test:customers-application": "node scripts/test-customers-application-integration.mjs"

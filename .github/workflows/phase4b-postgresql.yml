@@ -33,6 +33,7 @@ jobs:
 
     env:
       CI: "true"
+      PHASE4B_POSTGRESQL_CI: "true"
       DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_build_test
       TEST_DATABASE_ADMIN_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/postgres
       AUTH_SECRET: phase4b-ci-auth-secret-not-for-any-deployed-environment
@@ -57,6 +58,9 @@ jobs:
       - name: Verify PostgreSQL test dependency
         id: verify_pg
         run: node --input-type=module -e "await import('pg')"
+
+      - name: Verify CI database safety policy
+        run: npm run test:ci-database-safety
 
       - name: Prepare focused Phase 4B database
         env:
