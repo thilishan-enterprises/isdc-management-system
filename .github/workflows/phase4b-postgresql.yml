@@ -73,6 +73,7 @@ jobs:
         run: npm run build
 
       - name: Run focused authenticated approval concurrency tests
+        timeout-minutes: 10
         env:
           TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_focused_test
           PHASE4B_FOCUSED: "1"
@@ -90,6 +91,7 @@ jobs:
         run: node scripts/prepare-ci-test-database.mjs recreate
 
       - name: Run complete Phase 4B authenticated integration tests
+        timeout-minutes: 20
         env:
           TEST_DATABASE_URL: postgresql://phase4b_ci:phase4b-ci-password-only@127.0.0.1:5432/customers_phase4b_complete_test
         run: npm run test:customers-application

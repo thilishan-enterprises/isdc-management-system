@@ -34,11 +34,95 @@ if (!Number.isInteger(port) || port < 1024 || port > 65535) {
 const origin = `http://127.0.0.1:${port}`;
 const authSecret = "phase4b-auth-secret-isolated-tests-only-2026";
 const importSecret = "phase4b-import-secret-isolated-tests-only-2026";
-const db = new Client({ connectionString: testUrl.toString() });
+const db = new Client({
+  connectionString: testUrl.toString(),
+  connectionTimeoutMillis: 10_000,
+  query_timeout: 15_000,
+});
 let server;
+let shutdownPromise;
+let activeStage;
+let stageTimer;
 const safeServerDiagnostics = [];
 let sequence = 0;
 const unique = (prefix) => `${prefix}-${process.pid}-${++sequence}`;
+
+const delay = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function stopServer() {
+  if (!server?.pid) return;
+
+  const closed = new Promise((resolve) => {
+    if (server.exitCode !== null) resolve();
+    else server.once("close", resolve);
+  });
+
+  if (process.platform === "win32") {
+    try {
+      execFileSync(
+        "taskkill.exe",
+        ["/pid", String(server.pid), "/t", "/f"],
+        { stdio: "ignore" },
+      );
+    } catch {}
+  } else {
+    try {
+      process.kill(-server.pid, "SIGTERM");
+    } catch {}
+    await Promise.race([closed, delay(5_000)]);
+    try {
+      process.kill(-server.pid, "SIGKILL");
+    } catch {}
+    await Promise.race([closed, delay(2_000)]);
+  }
+
+  server.stdout?.destroy();
+  server.stderr?.destroy();
+}
+
+function shutdownResources() {
+  shutdownPromise ??= (async () => {
+    await stopServer();
+    if (db._connected) {
+      await Promise.race([
+        db.end(),
+        delay(5_000).then(() => {
+          throw new Error("PostgreSQL test client shutdown timed out.");
+        }),
+      ]);
+    }
+  })();
+  return shutdownPromise;
+}
+
+function clearStageTimer() {
+  if (stageTimer) clearTimeout(stageTimer);
+  stageTimer = undefined;
+}
+
+function startStage(name, timeoutMilliseconds = 120_000) {
+  if (activeStage) console.log(`PASS Phase 4B stage: ${activeStage}`);
+  clearStageTimer();
+  activeStage = name;
+  console.log(`START Phase 4B stage: ${name}`);
+  stageTimer = setTimeout(() => {
+    console.error(`TIMEOUT Phase 4B stage: ${name}`);
+    if (safeServerDiagnostics.length) {
+      console.error(JSON.stringify({ serverDiagnostics: safeServerDiagnostics }));
+    }
+    process.exitCode = 1;
+    void Promise.race([shutdownResources(), delay(10_000)]).finally(() => {
+      process.exit(1);
+    });
+  }, timeoutMilliseconds);
+}
+
+function finishStages() {
+  if (activeStage) console.log(`PASS Phase 4B stage: ${activeStage}`);
+  activeStage = undefined;
+  clearStageTimer();
+}
 
 function migrationCommand() {
   if (process.platform === "win32") return [process.env.ComSpec, ["/d", "/s", "/c", "npm.cmd exec prisma -- migrate deploy --config prisma7.config.ts"]];
@@ -87,7 +171,9 @@ async function session(jar) {
 async function waitForServer() {
   for (let attempt = 0; attempt < 240; attempt += 1) {
     try {
-      const response = await fetch(`${origin}/login`);
+      const response = await fetch(`${origin}/login`, {
+        signal: AbortSignal.timeout(2_000),
+      });
       if (response.status === 200) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -164,13 +250,19 @@ function importInput(sessionKey, rows) {
 }
 
 async function main() {
+  startStage("database migration and test fixtures");
   await db.connect();
   assert.equal((await db.query("SELECT current_database() AS name")).rows[0].name, ciMode ? databaseName : "template1");
   const dirty = await db.query(`SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename IN ('Customer','_prisma_migrations') LIMIT 1`);
   if (dirty.rowCount) throw new Error("Disposable Phase 4B database is not empty.");
 
   const [program, args] = migrationCommand();
-  execFileSync(program, args, { cwd: process.cwd(), env: { ...process.env, DATABASE_URL: testUrl.toString() }, stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync(program, args, {
+    cwd: process.cwd(),
+    env: { ...process.env, DATABASE_URL: testUrl.toString() },
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 120_000,
+  });
   assert.equal((await db.query(`SELECT count(*)::int AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`)).rows[0].count, 10);
 
   const password = "Phase4B-Password-Only";
@@ -187,6 +279,7 @@ async function main() {
   await db.query(`INSERT INTO "Employee" (id,"fullName","isActive","updatedAt") VALUES ($1,'Disabled Employee',false,NOW())`, [disabledEmployeeId]);
   await db.query(`INSERT INTO "User" (id,username,"passwordHash",role,"isActive","employeeId","updatedAt") VALUES ($1,$2,$3,'ADMIN',true,NULL,NOW()),($4,$5,$3,'STAFF',true,NULL,NOW()),($6,$7,$3,'STAFF',false,NULL,NOW()),($8,$9,$3,'STAFF',true,$10,NOW())`, [adminId,adminName,passwordHash,staffId,staffName,disabledId,disabledName,disabledEmployeeUserId,disabledEmployeeName,disabledEmployeeId]);
 
+  startStage("Next.js test server startup", 90_000);
   const startProgram = process.platform === "win32" ? process.env.ComSpec : "npm";
   const startArgs = process.platform === "win32" ? ["/d", "/s", "/c", `npm.cmd start -- -p ${port}`] : ["start", "--", "-p", String(port)];
   server = spawn(startProgram, startArgs, {
@@ -194,6 +287,7 @@ async function main() {
     env: { ...process.env, DATABASE_URL: testUrl.toString(), AUTH_SECRET: authSecret, IMPORT_SIGNING_SECRET: importSecret, AUTH_TRUST_HOST: "true", NODE_ENV: "production" },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
+    detached: process.platform !== "win32",
   });
   for (const stream of [server.stdout, server.stderr]) {
     stream?.on("data", (chunk) => {
@@ -206,6 +300,7 @@ async function main() {
   }
   await waitForServer();
 
+  startStage("authentication and anonymous authorization");
   const anonymousSelected = await request("/customers/exports/selected", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: ["missing"] }) });
   assert.equal(anonymousSelected.status, 401);
   assert.deepEqual(await anonymousSelected.json(), { error: "Authentication is required to export selected customers." });
@@ -234,6 +329,7 @@ async function main() {
     process.env.PHASE4B_DIAGNOSTIC === "1" ||
     process.env.PHASE4B_FOCUSED === "1"
   ) {
+    startStage("focused administrator approval concurrency");
     const diagnosticStaffId = unique("diagnostic-staff");
     const diagnosticStaffName = unique("diagnostic-staff-user");
     await db.query(`INSERT INTO "User" (id,username,"passwordHash",role,"isActive","updatedAt") VALUES ($1,$2,$3,'STAFF',true,NOW())`, [diagnosticStaffId, diagnosticStaffName, passwordHash]);
@@ -279,8 +375,10 @@ async function main() {
       assert.equal(report.customerDeleteAuditCount, 0);
       console.log("PASS focused authenticated administrator approval concurrency tests");
     }
+    finishStages();
     return;
   }
+  startStage("customer registration, editing, and approval throttling");
   const invalid = await callAction(manifest, "src/app/(app)/customers/actions.ts", "createCustomer", [{}, customerForm({ nic: "invalid" })], staffLogin.jar);
   assert.equal(invalid.response.status, 200);
   assert.match(JSON.stringify(invalid.value), /NIC|9 or 12/i);
@@ -320,6 +418,7 @@ async function main() {
   const afterWindow = await callAction(manifest, "src/app/(app)/customers/management-actions.ts", "deleteCustomers", [{ customerIds: ["missing"], adminPassword: password }], staffLogin.jar);
   assert.equal(afterWindow.value.success, true);
 
+  startStage("concurrent invalid and valid administrator approvals");
   const concurrentStaffId = unique("concurrent-staff");
   const concurrentStaffName = unique("concurrent-staff-user");
   await db.query(`INSERT INTO "User" (id,username,"passwordHash",role,"isActive","updatedAt") VALUES ($1,$2,$3,'STAFF',true,NOW())`, [concurrentStaffId, concurrentStaffName, passwordHash]);
@@ -345,6 +444,7 @@ async function main() {
       connectionStates: connectionStates.rows,
       serverDiagnostics: safeServerDiagnostics,
     }));
+    finishStages();
     return;
   }
   assert.ok(concurrentStatuses.every((status) => status === 200), JSON.stringify(concurrentStatuses));
@@ -372,6 +472,7 @@ async function main() {
   const validConcurrentAudit = await db.query(`SELECT action,count(*)::int AS count FROM "AuditLog" WHERE "userId"=$1 GROUP BY action ORDER BY action`, [validConcurrentStaffId]);
   assert.deepEqual(validConcurrentAudit.rows, [{ action: "CUSTOMER_ADMIN_APPROVAL_SUCCEEDED", count: 8 }]);
 
+  startStage("import security, concurrency, and recovery");
   const preview = await callAction(manifest, "src/app/(app)/customers/import/actions.ts", "validateCustomerImport", [importInput("phase4b_session_00000001", [["Import Customer","200000000010","0771000010","Import Address"]])], staffLogin.jar);
   assert.equal(preview.value.success, true);
   assert.ok(preview.value.token);
@@ -413,6 +514,7 @@ async function main() {
   const abandoned = await callAction(manifest, "src/app/(app)/customers/import/actions.ts", "commitCustomerImport", [readyPreview.value.token], staffLogin.jar);
   assert.equal(abandoned.value.status, "FAILED");
 
+  startStage("exports, stale sessions, and role refresh");
   const exportAll = await request("/customers/exports", {}, staffLogin.jar);
   assert.equal(exportAll.status, 200);
   assert.match(exportAll.headers.get("content-type") ?? "", /text\/csv/);
@@ -434,22 +536,12 @@ async function main() {
   const audit = JSON.stringify((await db.query(`SELECT action,reason,"beforeData","afterData" FROM "AuditLog"`)).rows);
   assert.doesNotMatch(audit, new RegExp(password.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   console.log("PASS authenticated Customers application integration tests");
+  finishStages();
 }
 
 try {
   await main();
 } finally {
-  if (server && !server.killed) {
-    if (process.platform === "win32") {
-      try { execFileSync("taskkill.exe", ["/pid", String(server.pid), "/t", "/f"], { stdio: "ignore" }); } catch {}
-    } else {
-      server.kill("SIGTERM");
-      await Promise.race([
-        new Promise((resolve) => server.once("close", resolve)),
-        new Promise((resolve) => setTimeout(resolve, 5_000)),
-      ]);
-      if (server.exitCode === null) server.kill("SIGKILL");
-    }
-  }
-  if (db._connected) await db.end();
+  clearStageTimer();
+  await shutdownResources();
 }
