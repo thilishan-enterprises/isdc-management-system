@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import process from "node:process";
 import { Client } from "pg";
+import {
+  validateCiDatabaseConfiguration,
+  validateCiServerIdentity,
+} from "./ci-database-safety.mjs";
 import "dotenv/config";
 
 const testUrlText = process.env.TEST_DATABASE_URL;
@@ -12,16 +16,24 @@ const testUrl = new URL(testUrlText);
 const databaseName = testUrl.pathname.slice(1);
 const localInstanceName = process.env.TEST_DATABASE_INSTANCE_NAME ?? "";
 const ciMode = process.env.CI === "true";
-if (!["localhost", "127.0.0.1", "::1"].includes(testUrl.hostname)) {
-  throw new Error("Refusing integration tests: only a local disposable PostgreSQL host is allowed.");
-}
 const localInstanceMode = /^customers-phase4a-(?:test|ci|tmp)[a-z0-9-]*$/i.test(localInstanceName);
-if (!localInstanceMode && !/^customers_phase4a_(?:test|ci|tmp)[a-z0-9_]*$/i.test(databaseName)) {
-  throw new Error("Refusing integration tests: neither database nor local instance is explicitly marked for Phase 4A testing.");
+let adminUrl;
+if (ciMode) {
+  const ciConfiguration = validateCiDatabaseConfiguration(process.env);
+  if (ciConfiguration.databaseName !== databaseName) {
+    throw new Error("Phase 4A CI database identity does not match its URL.");
+  }
+  adminUrl = ciConfiguration.adminUrl;
+} else {
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(testUrl.hostname)) {
+    throw new Error("Refusing integration tests: only a local disposable PostgreSQL host is allowed.");
+  }
+  if (!localInstanceMode && !/^customers_phase4a_(?:test|ci|tmp)[a-z0-9_]*$/i.test(databaseName)) {
+    throw new Error("Refusing integration tests: neither database nor local instance is explicitly marked for Phase 4A testing.");
+  }
+  adminUrl = new URL(testUrl);
+  adminUrl.pathname = "/template1";
 }
-
-const adminUrl = new URL(testUrl);
-if (!ciMode) adminUrl.pathname = "/template1";
 const admin = new Client({ connectionString: adminUrl.toString() });
 let databaseCreated = false;
 
@@ -92,18 +104,36 @@ async function reserveApproval(client, actorId, clock) {
 
 async function main() {
   await admin.connect();
-  const identity = await admin.query("SELECT current_database(), inet_server_addr()::text AS address");
-  assert.equal(identity.rows[0].current_database, ciMode ? databaseName : "template1");
-  assert.ok(["127.0.0.1", "::1", null].includes(identity.rows[0].address));
 
   if (ciMode) {
-    const existingSchema = await admin.query(`SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename IN ('Customer','_prisma_migrations') LIMIT 1`);
-    if (existingSchema.rowCount) throw new Error("Disposable CI database is not empty; refusing to reuse unknown state.");
+    const identity = await admin.query(`
+      SELECT
+        current_database() AS database,
+        current_user AS username,
+        current_setting('server_version_num')::integer AS server_version_num,
+        pg_is_in_recovery() AS in_recovery,
+        role.rolcreatedb AS can_create_database
+      FROM pg_roles AS role
+      WHERE role.rolname = current_user
+    `);
+    validateCiServerIdentity(identity.rows[0]);
+
+    const preflight = await dbClient();
+    try {
+      const existingSchema = await preflight.query(`SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename IN ('Customer','_prisma_migrations') LIMIT 1`);
+      if (existingSchema.rowCount) throw new Error("Disposable CI database is not empty; refusing to reuse unknown state.");
+    } finally {
+      await preflight.end();
+    }
   } else if (localInstanceMode) {
+    const identity = await admin.query("SELECT current_database(), inet_server_addr()::text AS address");
+    assert.equal(identity.rows[0].current_database, "template1");
+    assert.ok(["127.0.0.1", "::1", null].includes(identity.rows[0].address));
     assert.equal(databaseName, "template1", "local Prisma Postgres tests must use their dedicated instance database");
     const existingSchema = await admin.query(`SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename IN ('Customer','_prisma_migrations') LIMIT 1`);
     if (existingSchema.rowCount) throw new Error("Disposable local instance is not empty; refusing to reuse unknown state.");
   } else {
+    assert.equal((await admin.query("SELECT current_database() AS name")).rows[0].name, "template1");
     const existing = await admin.query("SELECT 1 FROM pg_database WHERE datname=$1", [databaseName]);
     if (existing.rowCount) throw new Error("Disposable test database already exists; refusing to reuse unknown state.");
     await admin.query(`CREATE DATABASE ${qid(databaseName)} TEMPLATE template0`);
