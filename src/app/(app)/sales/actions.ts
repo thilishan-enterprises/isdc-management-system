@@ -11,44 +11,14 @@ import {
   getUniqueCustomerField,
   hasPrismaCode,
 } from "@/lib/customer-prisma-errors";
-
-function addMonthsUTC(date: Date, monthsToAdd: number): Date {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth() + monthsToAdd;
-  const day = date.getUTCDate();
-  const targetMonth = new Date(Date.UTC(year, month, 1));
-  const lastDay = new Date(
-    Date.UTC(targetMonth.getUTCFullYear(), targetMonth.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  return new Date(
-    Date.UTC(
-      targetMonth.getUTCFullYear(),
-      targetMonth.getUTCMonth(),
-      Math.min(day, lastDay),
-    ),
-  );
-}
-function parseDate(value: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (
-    Number.isNaN(date.getTime()) ||
-    date.toISOString().slice(0, 10) !== value
-  ) {
-    return null;
-  }
-  return date;
-}
-function toCents(value: string): number | null {
-  if (!/^\d{1,10}(\.\d{1,2})?$/.test(value)) return null;
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return null;
-  const cents = Math.round(amount * 100);
-  return cents <= 999_999_999_999 ? cents : null;
-}
-function fromCents(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
+import {
+  calculateLineTotalCents,
+  calculateSaleTotalCents,
+  createInstallmentPlan,
+  formatCents,
+  parseIsoDate,
+  parseMoneyToCents,
+} from "./_lib/calculations";
 export type SaleRegistrationState = {
   error?: string;
 };
@@ -117,7 +87,7 @@ export async function createSaleRegistration(
           ? item.productBrandId.trim()
           : null;
     const quantity = Number(item.quantity);
-    const unitPriceCents = toCents(String(item.unitPrice ?? ""));
+    const unitPriceCents = parseMoneyToCents(String(item.unitPrice ?? ""));
     if (
       !productId ||
       (item.productBrandId !== null &&
@@ -138,14 +108,18 @@ export async function createSaleRegistration(
       return { error: "invalid" };
     }
     itemKeys.add(itemKey);
-    const lineTotalCents = unitPriceCents * quantity;
-    if (!Number.isSafeInteger(lineTotalCents)) {
+    const lineTotalCents = calculateLineTotalCents(unitPriceCents, quantity);
+    if (lineTotalCents === null) {
       return { error: "amount" };
     }
-    totalCents += lineTotalCents;
-    if (!Number.isSafeInteger(totalCents)) {
+    const nextTotalCents = calculateSaleTotalCents([
+      totalCents,
+      lineTotalCents,
+    ]);
+    if (nextTotalCents === null) {
       return { error: "amount" };
     }
+    totalCents = nextTotalCents;
     items.push({
       productId,
       productBrandId,
@@ -154,12 +128,14 @@ export async function createSaleRegistration(
       lineTotalCents,
     });
   }
-  const advanceCents = toCents(String(formData.get("advancePayment") ?? ""));
-  const monthlyCents = toCents(
+  const advanceCents = parseMoneyToCents(
+    String(formData.get("advancePayment") ?? ""),
+  );
+  const monthlyCents = parseMoneyToCents(
     String(formData.get("monthlyInstallmentAmount") ?? ""),
   );
-  const saleDate = parseDate(String(formData.get("saleDate") ?? ""));
-  const firstInstallmentDate = parseDate(
+  const saleDate = parseIsoDate(String(formData.get("saleDate") ?? ""));
+  const firstInstallmentDate = parseIsoDate(
     String(formData.get("firstInstallmentDate") ?? ""),
   );
   const valid =
@@ -199,18 +175,16 @@ export async function createSaleRegistration(
   });
   if (!verified) return { error: "verification" };
 
-  if (advanceCents > totalCents) {
-    return { error: "amount" };
-  }
-  const balanceCents = totalCents - advanceCents;
-  if (balanceCents > 0 && monthlyCents <= 0) {
-    return { error: "installment" };
-  }
-  const installmentCount =
-    balanceCents > 0 ? Math.ceil(balanceCents / monthlyCents) : 0;
-  if (installmentCount > 1200) {
-    return { error: "installment" };
-  }
+  const installmentPlan = createInstallmentPlan({
+    totalCents,
+    advanceCents,
+    monthlyCents,
+    saleDate,
+    firstInstallmentDate,
+  });
+  if (!installmentPlan.success) return { error: installmentPlan.error };
+
+  const { balanceCents, installments } = installmentPlan.plan;
   try {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
@@ -220,8 +194,8 @@ export async function createSaleRegistration(
         productBrandId: string | null;
         productName: string;
         quantity: number;
-        unitPrice: ReturnType<typeof fromCents>;
-        lineTotal: ReturnType<typeof fromCents>;
+        unitPrice: ReturnType<typeof formatCents>;
+        lineTotal: ReturnType<typeof formatCents>;
       }[] = [];
       // Validate and deduct stock for every selected item.
       for (const item of items) {
@@ -305,8 +279,8 @@ export async function createSaleRegistration(
           productBrandId: selectedProductBrandId,
           productName: product.name,
           quantity: item.quantity,
-          unitPrice: fromCents(item.unitPriceCents),
-          lineTotal: fromCents(item.lineTotalCents),
+          unitPrice: formatCents(item.unitPriceCents),
+          lineTotal: formatCents(item.lineTotalCents),
         });
       }
       // Validate sales employee.
@@ -374,8 +348,8 @@ export async function createSaleRegistration(
           customerId,
           salesEmployeeId: salesEmployeeId || null,
           saleDate,
-          totalAmount: fromCents(totalCents),
-          advancePayment: fromCents(advanceCents),
+          totalAmount: formatCents(totalCents),
+          advancePayment: formatCents(advanceCents),
           notes: notes || null,
           status: balanceCents === 0 ? "PAID" : "ACTIVE",
           customerSnapshot: {
@@ -393,18 +367,11 @@ export async function createSaleRegistration(
             create: saleItems,
           },
           installments: {
-            create: Array.from({ length: installmentCount }, (_, index) => {
-              const installmentNumber = index + 1;
-              const amountCents = Math.min(
-                monthlyCents,
-                balanceCents - index * monthlyCents,
-              );
-              return {
-                installmentNumber,
-                dueDate: addMonthsUTC(firstInstallmentDate, index),
-                scheduledAmount: fromCents(amountCents),
-              };
-            }),
+            create: installments.map((installment) => ({
+              installmentNumber: installment.installmentNumber,
+              dueDate: installment.dueDate,
+              scheduledAmount: formatCents(installment.amountCents),
+            })),
           },
         },
         });

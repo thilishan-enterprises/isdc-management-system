@@ -126,6 +126,9 @@ jobs:
       - name: Run unit tests
         run: npm run test:import
 
+      - name: Run Sales financial calculation tests
+        run: node --import ./scripts/tsx-userinfo-fallback.mjs --import tsx --test "src/app/(app)/sales/_lib/calculations.test.ts"
+
       - name: Validate Prisma schema
         run: npm exec prisma -- validate --config prisma7.config.ts
 

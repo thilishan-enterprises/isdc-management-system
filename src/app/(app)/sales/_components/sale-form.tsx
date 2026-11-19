@@ -295,6 +295,11 @@ export function SaleForm({ products, employees }: SaleFormProps) {
     const advance = moneyInput(advancePayment);
     const balance = Math.max(0, total - advance);
     const monthly = moneyInput(monthlyInstallmentAmount);
+    const installmentDatesValid =
+      balance === 0 ||
+      !saleDate ||
+      !firstInstallmentDate ||
+      firstInstallmentDate >= saleDate;
 
     const installmentCount =
       balance > 0 && monthly > 0 ? Math.ceil(balance / monthly) : 0;
@@ -314,6 +319,7 @@ export function SaleForm({ products, employees }: SaleFormProps) {
       installmentCount,
       finalInstallment,
       regularInstallmentCount,
+      installmentDatesValid,
       valid:
         selectedItems.length > 0 &&
         selectedItems.every(
@@ -325,12 +331,15 @@ export function SaleForm({ products, employees }: SaleFormProps) {
         ) &&
         advance <= total &&
         (balance === 0 || monthly > 0) &&
+        installmentDatesValid &&
         installmentCount <= 1200,
     };
   }, [
     totalProductAmount,
     advancePayment,
     monthlyInstallmentAmount,
+    saleDate,
+    firstInstallmentDate,
     selectedItems,
   ]);
 
@@ -1310,6 +1319,17 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                   >
                     <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                     This plan exceeds the 1,200-installment limit.
+                  </p>
+                )}
+
+                {!calculations.installmentDatesValid && (
+                  <p
+                    className="flex items-start gap-1.5 text-xs text-destructive"
+                    role="alert"
+                  >
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                    First installment date cannot be earlier than the sale
+                    date.
                   </p>
                 )}
 

@@ -230,6 +230,63 @@ function customerForm(input = {}) {
   return form;
 }
 
+let saleIdentitySequence = 100;
+
+async function verifiedSaleForm(
+  manifest,
+  jar,
+  {
+    billNumber = unique("sale-bill"),
+    items,
+    advancePayment = "0",
+    monthlyInstallmentAmount = "1000",
+    saleDate = "2026-01-15",
+    firstInstallmentDate = "2026-02-15",
+  },
+) {
+  saleIdentitySequence += 1;
+  const suffix = String(saleIdentitySequence).padStart(7, "0");
+  const entered = {
+    billNumber,
+    fullName: `Sale Test Customer ${saleIdentitySequence}`,
+    address: `Sale Test Address ${saleIdentitySequence}`,
+    nic: String(300_000_000_000 + saleIdentitySequence),
+    mobile: `071${suffix}`,
+    additionalMobile: "",
+  };
+  const confirmation = await callAction(
+    manifest,
+    "src/app/(app)/sales/actions.ts",
+    "confirmSaleCustomerRecord",
+    [{ entered, selectedCustomerId: null, details: null }],
+    jar,
+  );
+  assert.equal(confirmation.response.status, 200);
+  assert.equal(confirmation.value?.success, true, JSON.stringify(confirmation.value));
+  assert.ok(confirmation.value?.token);
+
+  const form = new FormData();
+  form.set("billNumber", billNumber);
+  form.set("fullName", entered.fullName);
+  form.set("address", entered.address);
+  form.set("nic", entered.nic);
+  form.set("mobile", entered.mobile);
+  form.set("additionalMobile", "");
+  form.set("area", "Sales Test Area");
+  form.set("guarantorDetails", "Snapshot guarantor");
+  form.set("salesEmployeeId", "");
+  form.set("notes", "Sales integration test");
+  form.set("items", JSON.stringify(items));
+  form.set("advancePayment", advancePayment);
+  form.set("monthlyInstallmentAmount", monthlyInstallmentAmount);
+  form.set("saleDate", saleDate);
+  form.set("firstInstallmentDate", firstInstallmentDate);
+  form.set("verificationToken", confirmation.value.token);
+  form.set("selectedCustomerId", "");
+
+  return { billNumber, entered, form };
+}
+
 function resignImportToken(token, mutate) {
   const [body] = token.split(".");
   const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
@@ -471,6 +528,136 @@ async function main() {
   assert.ok(validConcurrentApprovals.every(({ response, value }) => response.status === 200 && value?.success === true));
   const validConcurrentAudit = await db.query(`SELECT action,count(*)::int AS count FROM "AuditLog" WHERE "userId"=$1 GROUP BY action ORDER BY action`, [validConcurrentStaffId]);
   assert.deepEqual(validConcurrentAudit.rows, [{ action: "CUSTOMER_ADMIN_APPROVAL_SUCCEEDED", count: 8 }]);
+
+  startStage("sale registration stock, rollback, snapshots, and authorization");
+  const categoryId = unique("sale-category");
+  const brandId = unique("sale-brand");
+  const standardProductId = unique("sale-product");
+  const rollbackProductId = unique("rollback-product");
+  const limitedProductId = unique("limited-product");
+  const brandedProductId = unique("branded-product");
+  const productBrandId = unique("product-brand");
+  await db.query(
+    `INSERT INTO "ProductCategory" (id,name,"updatedAt") VALUES ($1,$2,NOW())`,
+    [categoryId, unique("Sale Category")],
+  );
+  await db.query(
+    `INSERT INTO "Brand" (id,name,"updatedAt") VALUES ($1,$2,NOW())`,
+    [brandId, unique("Sale Brand")],
+  );
+  await db.query(
+    `INSERT INTO "Product" (id,name,price,"stockQuantity","isActive","categoryId","updatedAt") VALUES
+      ($1,'Standard Product',1000,5,true,$5,NOW()),
+      ($2,'Rollback Product',500,2,true,$5,NOW()),
+      ($3,'Limited Product',750,1,true,$5,NOW()),
+      ($4,'Branded Product',900,0,true,$5,NOW())`,
+    [standardProductId, rollbackProductId, limitedProductId, brandedProductId, categoryId],
+  );
+  await db.query(
+    `INSERT INTO "ProductBrand" (id,"productId","brandId",price,"stockQuantity","isActive","updatedAt") VALUES ($1,$2,$3,900,1,true,NOW())`,
+    [productBrandId, brandedProductId, brandId],
+  );
+
+  const staffSale = await verifiedSaleForm(manifest, staffLogin.jar, {
+    items: [
+      { productId: standardProductId, productBrandId: null, quantity: 2, unitPrice: "1250.25" },
+      { productId: rollbackProductId, productBrandId: null, quantity: 1, unitPrice: "500.50" },
+    ],
+    advancePayment: "500.50",
+    monthlyInstallmentAmount: "1000.25",
+  });
+  const staffSaleResult = await callAction(
+    manifest,
+    "src/app/(app)/sales/actions.ts",
+    "createSaleRegistration",
+    [{}, staffSale.form],
+    staffLogin.jar,
+  );
+  assert.ok([200, 303].includes(staffSaleResult.response.status));
+  const persistedSale = (
+    await db.query(
+      `SELECT s.id,s."totalAmount",s."advancePayment",s.status,s."customerId",cs."fullName" AS snapshot_name
+       FROM "Sale" s JOIN "SaleCustomerSnapshot" cs ON cs."saleId"=s.id
+       WHERE s."billNumber"=$1`,
+      [staffSale.billNumber],
+    )
+  ).rows[0];
+  assert.ok(persistedSale);
+  assert.equal(String(persistedSale.totalAmount), "3001.00");
+  assert.equal(String(persistedSale.advancePayment), "500.50");
+  assert.equal(persistedSale.snapshot_name, staffSale.entered.fullName);
+  assert.equal(
+    (await db.query(`SELECT "stockQuantity" FROM "Product" WHERE id=$1`, [standardProductId])).rows[0].stockQuantity,
+    3,
+  );
+  await db.query(`UPDATE "Customer" SET "fullName"='Changed after sale',"updatedAt"=NOW() WHERE id=$1`, [persistedSale.customerId]);
+  assert.equal(
+    (await db.query(`SELECT "fullName" FROM "SaleCustomerSnapshot" WHERE "saleId"=$1`, [persistedSale.id])).rows[0].fullName,
+    staffSale.entered.fullName,
+  );
+
+  const anonymousSale = await verifiedSaleForm(manifest, staffLogin.jar, {
+    items: [{ productId: standardProductId, productBrandId: null, quantity: 1, unitPrice: "1000" }],
+  });
+  const anonymousResult = await callAction(
+    manifest,
+    "src/app/(app)/sales/actions.ts",
+    "createSaleRegistration",
+    [{}, anonymousSale.form],
+  );
+  assert.ok([200, 302, 303, 307, 308].includes(anonymousResult.response.status));
+  assert.equal((await db.query(`SELECT count(*)::int AS count FROM "Sale" WHERE "billNumber"=$1`, [anonymousSale.billNumber])).rows[0].count, 0);
+
+  const adminSale = await verifiedSaleForm(manifest, adminLogin.jar, {
+    items: [{ productId: standardProductId, productBrandId: null, quantity: 1, unitPrice: "1000" }],
+    advancePayment: "1000",
+    monthlyInstallmentAmount: "0",
+  });
+  await callAction(manifest, "src/app/(app)/sales/actions.ts", "createSaleRegistration", [{}, adminSale.form], adminLogin.jar);
+  assert.deepEqual(
+    (await db.query(`SELECT status FROM "Sale" WHERE "billNumber"=$1`, [adminSale.billNumber])).rows[0],
+    { status: "PAID" },
+  );
+
+  const insufficientProduct = await verifiedSaleForm(manifest, staffLogin.jar, {
+    items: [{ productId: limitedProductId, productBrandId: null, quantity: 2, unitPrice: "750" }],
+  });
+  const insufficientProductResult = await callAction(manifest, "src/app/(app)/sales/actions.ts", "createSaleRegistration", [{}, insufficientProduct.form], staffLogin.jar);
+  assert.deepEqual(insufficientProductResult.value, { error: "stock" });
+
+  const insufficientBrand = await verifiedSaleForm(manifest, staffLogin.jar, {
+    items: [{ productId: brandedProductId, productBrandId, quantity: 2, unitPrice: "900" }],
+  });
+  const insufficientBrandResult = await callAction(manifest, "src/app/(app)/sales/actions.ts", "createSaleRegistration", [{}, insufficientBrand.form], staffLogin.jar);
+  assert.deepEqual(insufficientBrandResult.value, { error: "stock" });
+
+  const rollbackSale = await verifiedSaleForm(manifest, staffLogin.jar, {
+    items: [
+      { productId: rollbackProductId, productBrandId: null, quantity: 1, unitPrice: "500" },
+      { productId: limitedProductId, productBrandId: null, quantity: 2, unitPrice: "750" },
+    ],
+  });
+  const rollbackResult = await callAction(manifest, "src/app/(app)/sales/actions.ts", "createSaleRegistration", [{}, rollbackSale.form], staffLogin.jar);
+  assert.deepEqual(rollbackResult.value, { error: "stock" });
+  assert.equal((await db.query(`SELECT "stockQuantity" FROM "Product" WHERE id=$1`, [rollbackProductId])).rows[0].stockQuantity, 1);
+  assert.equal((await db.query(`SELECT count(*)::int AS count FROM "Sale" WHERE "billNumber"=$1`, [rollbackSale.billNumber])).rows[0].count, 0);
+
+  const concurrentA = await verifiedSaleForm(manifest, staffLogin.jar, {
+    items: [{ productId: limitedProductId, productBrandId: null, quantity: 1, unitPrice: "750" }],
+  });
+  const concurrentB = await verifiedSaleForm(manifest, adminLogin.jar, {
+    items: [{ productId: limitedProductId, productBrandId: null, quantity: 1, unitPrice: "750" }],
+  });
+  const concurrentSales = await Promise.all([
+    callAction(manifest, "src/app/(app)/sales/actions.ts", "createSaleRegistration", [{}, concurrentA.form], staffLogin.jar),
+    callAction(manifest, "src/app/(app)/sales/actions.ts", "createSaleRegistration", [{}, concurrentB.form], adminLogin.jar),
+  ]);
+  assert.equal(concurrentSales.filter(({ value }) => value?.error === "stock").length, 1);
+  assert.equal(
+    (await db.query(`SELECT count(*)::int AS count FROM "Sale" WHERE "billNumber"=ANY($1::text[])`, [[concurrentA.billNumber, concurrentB.billNumber]])).rows[0].count,
+    1,
+  );
+  assert.equal((await db.query(`SELECT "stockQuantity" FROM "Product" WHERE id=$1`, [limitedProductId])).rows[0].stockQuantity, 0);
 
   startStage("import security, concurrency, and recovery");
   const preview = await callAction(manifest, "src/app/(app)/customers/import/actions.ts", "validateCustomerImport", [importInput("phase4b_session_00000001", [["Import Customer","200000000010","0771000010","Import Address"]])], staffLogin.jar);
