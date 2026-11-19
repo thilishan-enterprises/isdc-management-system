@@ -81,7 +81,7 @@ async function assertRegistryConsistent(client) {
 }
 
 async function reserveApproval(client, actorId, clock) {
-  await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+  await client.query("BEGIN");
   try {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`customer-admin-approval:${actorId}`]);
     const count = await client.query(
@@ -257,6 +257,9 @@ async function main() {
     const expired = await db.query(`UPDATE "ImportJob" SET status='FAILED',"failedCount"=2,"failureCode"='PREVIEW_EXPIRED',"completedAt"=NOW(),"updatedAt"=NOW() WHERE id=$1 AND status='READY' AND "createdAt" < NOW()-interval '30 minutes'`, [abandonedJob]);
     assert.equal(expired.rowCount, 1);
 
+    const defaultIsolation = await db.query("SHOW default_transaction_isolation");
+    assert.equal(defaultIsolation.rows[0].default_transaction_isolation, "read committed");
+
     await db.query(`INSERT INTO "AuditLog" (id,"userId",action,"entityType","entityId",reason,"createdAt") VALUES ($1,$2,'CUSTOMER_ADMIN_APPROVAL_FAILED','Security',$2,'Customer mutation administrator approval failed',CURRENT_TIMESTAMP-interval '16 minutes')`, [id("audit"), staffUser]);
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const attemptId = await reserveApproval(db, staffUser);
@@ -271,8 +274,26 @@ async function main() {
     try {
       const attempts = await Promise.all(approvalClients.map((client) => reserveApproval(client, concurrentActor)));
       assert.equal(attempts.filter(Boolean).length, 5);
-      const auditCount = await db.query(`SELECT count(*)::int AS count FROM "AuditLog" WHERE "userId"=$1 AND action='CUSTOMER_ADMIN_APPROVAL_ATTEMPT'`, [concurrentActor]);
-      assert.equal(auditCount.rows[0].count, 5);
+      await Promise.all(attempts.map((attemptId, index) =>
+        attemptId
+          ? approvalClients[index].query(
+              `UPDATE "AuditLog" SET action='CUSTOMER_ADMIN_APPROVAL_FAILED',reason='Customer mutation administrator approval failed' WHERE id=$1 AND "userId"=$2 AND action='CUSTOMER_ADMIN_APPROVAL_ATTEMPT'`,
+              [attemptId, concurrentActor],
+            )
+          : Promise.resolve(),
+      ));
+      const auditCounts = await db.query(
+        `SELECT action,count(*)::int AS count FROM "AuditLog" WHERE "userId"=$1 GROUP BY action ORDER BY action`,
+        [concurrentActor],
+      );
+      assert.deepEqual(auditCounts.rows, [
+        { action: "CUSTOMER_ADMIN_APPROVAL_FAILED", count: 5 },
+      ]);
+      const unauthorizedDeletes = await db.query(
+        `SELECT count(*)::int AS count FROM "AuditLog" WHERE "userId"=$1 AND action='CUSTOMER_DELETED'`,
+        [concurrentActor],
+      );
+      assert.equal(unauthorizedDeletes.rows[0].count, 0);
     } finally { await Promise.all(approvalClients.map((client) => client.end())); }
 
     const successActor = id("staff");
