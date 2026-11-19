@@ -154,7 +154,7 @@ async function main() {
   try {
     assert.equal((await db.query("SELECT current_database() AS name")).rows[0].name, databaseName);
     const migrations = await db.query(`SELECT count(*)::int AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`);
-    assert.equal(migrations.rows[0].count, 10);
+    assert.equal(migrations.rows[0].count, 11);
     const tables = await db.query(`SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1::text[])`, [["Customer", "CustomerPhone", "ImportJob", "AuditLog", "Sale"]]);
     assert.equal(tables.rowCount, 5);
     assert.equal((await db.query(`SELECT count(*)::int AS count FROM "Customer"`)).rows[0].count, 0, "fresh migrated test database must not contain customers");

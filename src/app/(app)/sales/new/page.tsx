@@ -1,11 +1,18 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
+import { WhatsAppPhone } from "@/components/common/whatsapp-phone";
 import { SaleForm } from "../_components/sale-form";
 import { RecentSalesDetailsControl } from "../_components/recent-sales-details-control";
-import { AlertCircle, CheckCircle2, Clock3, FileText } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  ReceiptText,
+} from "lucide-react";
 
 type PageProps = {
   searchParams: Promise<{
@@ -114,7 +121,6 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
         name: true,
         price: true,
         stockQuantity: true,
-        warrantyMonths: true,
         productBrands: {
           where: { isActive: true },
           orderBy: { brand: { name: "asc" } },
@@ -123,7 +129,6 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
             brandId: true,
             price: true,
             stockQuantity: true,
-            warrantyMonths: true,
             brand: {
               select: { name: true },
             },
@@ -219,31 +224,30 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
     name: product.name,
     price: String(product.price),
     stockQuantity: product.stockQuantity,
-    warrantyMonths: product.warrantyMonths,
     productBrands: product.productBrands.map((option) => ({
       id: option.id,
       brandId: option.brandId,
       brandName: option.brand.name,
       price: String(option.price),
       stockQuantity: option.stockQuantity,
-      warrantyMonths: option.warrantyMonths,
     })),
   }));
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-5">
-      <PageHeader
-        title="New Sale Registration"
-        description="Register a customer purchase and configure its installment collection plan."
-        actions={
-          <Link
-            href="/sales"
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            Go Back
-          </Link>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/sales"
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+        >
+          <ArrowLeft className="size-4" />
+          Go Back
+        </Link>
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <ReceiptText className="size-4" />
+          Sale registration
+        </span>
+      </div>
 
       {params.created === "1" && (
         <div
@@ -273,24 +277,6 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
 
       {/* Recent sales */}
       <Card className="overflow-hidden border-border/70 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-4 sm:px-5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Clock3 className="size-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold">Recent sales</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Your 10 latest sale registrations.
-              </p>
-            </div>
-          </div>
-
-          <span className="rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            {recentSales.length} records
-          </span>
-        </div>
-
         <CardContent className="p-0">
           {recentSales.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-5 py-10 text-center">
@@ -305,7 +291,21 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
               </p>
             </div>
           ) : (
-            <RecentSalesDetailsControl>
+            <RecentSalesDetailsControl
+              header={
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Clock3 className="size-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold">Recent sales</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Your 10 latest sale registrations.
+                    </p>
+                  </div>
+                </div>
+              }
+            >
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1000px] text-left text-sm">
                   <thead>
@@ -378,13 +378,18 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
                                   <strong className="text-foreground">
                                     Mobile:
                                   </strong>{" "}
-                                  {customerDetails.mobile}
+                                  <WhatsAppPhone
+                                    phone={customerDetails.mobile}
+                                  />
                                 </p>
                                 <p>
                                   <strong className="text-foreground">
                                     Additional:
                                   </strong>{" "}
-                                  {customerDetails.additionalMobile || "N/A"}
+                                  <WhatsAppPhone
+                                    phone={customerDetails.additionalMobile}
+                                    emptyLabel="N/A"
+                                  />
                                 </p>
                                 <p>
                                   <strong className="text-foreground">
@@ -481,7 +486,7 @@ async function RegisterSaleContent({ searchParams }: PageProps) {
                             </p>
                             {sale.salesEmployee?.mobile && (
                               <p className="mb-2 text-[11px] text-muted-foreground">
-                                {sale.salesEmployee.mobile}
+                                <WhatsAppPhone phone={sale.salesEmployee.mobile} />
                               </p>
                             )}
                             <StatusBadge status={sale.status} />

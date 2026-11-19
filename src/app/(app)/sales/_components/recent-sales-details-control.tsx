@@ -6,8 +6,10 @@ import { ChevronsUpDown } from "lucide-react";
 
 export function RecentSalesDetailsControl({
   children,
+  header,
 }: {
   children: ReactNode;
+  header: ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -26,7 +28,8 @@ export function RecentSalesDetailsControl({
 
   return (
     <div ref={containerRef}>
-      <div className="flex justify-end border-b border-border/60 px-4 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-3.5 sm:px-5">
+        {header}
         <Button
           type="button"
           variant="ghost"

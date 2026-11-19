@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import {
   Select,
   SelectContent,
@@ -7,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { shouldCloseAppSelectOnScroll } from "./app-select-scroll";
 
 type SelectOption = {
   value: string;
@@ -37,14 +40,35 @@ export function AppSelect({
   required = false,
   className,
 }: AppSelectProps) {
+  const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const selectedValue = value ?? defaultValue;
 
   const selectedOption = options.find(
     (option) => option.value === selectedValue,
   );
 
+  useEffect(() => {
+    if (!open) return;
+
+    function handleScroll(event: Event) {
+      const target = event.target;
+      const occurredInsideOptions =
+        target instanceof Node && Boolean(contentRef.current?.contains(target));
+
+      if (shouldCloseAppSelectOnScroll(occurredInsideOptions)) {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, [open]);
+
   return (
     <Select
+      open={open}
+      onOpenChange={setOpen}
       name={name}
       value={value}
       defaultValue={defaultValue}
@@ -64,7 +88,10 @@ export function AppSelect({
         </SelectValue>
       </SelectTrigger>
 
-      <SelectContent className="max-h-72 rounded-xl border-border/80 p-1 shadow-lg">
+      <SelectContent
+        ref={contentRef}
+        className="max-h-72 rounded-xl border-border/80 p-1 shadow-lg"
+      >
         {options.map((option) => (
           <SelectItem
             key={option.value}

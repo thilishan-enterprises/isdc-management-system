@@ -19,6 +19,7 @@ import {
   parseIsoDate,
   parseMoneyToCents,
 } from "./_lib/calculations";
+import { isValidSaleBillNumber } from "./_lib/record-check-validation";
 export type SaleRegistrationState = {
   error?: string;
 };
@@ -139,9 +140,7 @@ export async function createSaleRegistration(
     String(formData.get("firstInstallmentDate") ?? ""),
   );
   const valid =
-    billNumber.length >= 1 &&
-    billNumber.length <= 50 &&
-    /^[A-Za-z0-9/-]+$/.test(billNumber) &&
+    isValidSaleBillNumber(billNumber) &&
     fullName.length >= 2 &&
     fullName.length <= 150 &&
     !contactValidation.nicError &&
@@ -487,7 +486,7 @@ export async function checkSaleCustomerRecords(
   });
   const { nic, mobile, additionalMobile } = contactValidation.normalized;
   if (
-    !/^[A-Za-z0-9/-]{1,50}$/.test(billNumber) ||
+    !isValidSaleBillNumber(billNumber) ||
     fullName.length < 2 ||
     fullName.length > 150 ||
     address.length < 3 ||
@@ -913,7 +912,7 @@ export async function confirmSaleCustomerRecord(
     additionalMobile: record.additionalMobile,
   });
   if (
-    !/^[A-Za-z0-9/-]{1,50}$/.test(record.billNumber) ||
+    !isValidSaleBillNumber(record.billNumber) ||
     record.fullName.length < 2 ||
     record.fullName.length > 150 ||
     record.address.length < 3 ||

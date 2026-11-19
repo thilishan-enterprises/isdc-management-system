@@ -236,7 +236,7 @@ async function verifiedSaleForm(
   manifest,
   jar,
   {
-    billNumber = unique("sale-bill"),
+    billNumber,
     items,
     advancePayment = "0",
     monthlyInstallmentAmount = "1000",
@@ -245,6 +245,7 @@ async function verifiedSaleForm(
   },
 ) {
   saleIdentitySequence += 1;
+  billNumber ??= String(saleIdentitySequence).padStart(4, "0");
   const suffix = String(saleIdentitySequence).padStart(7, "0");
   const entered = {
     billNumber,
@@ -320,7 +321,7 @@ async function main() {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 120_000,
   });
-  assert.equal((await db.query(`SELECT count(*)::int AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`)).rows[0].count, 10);
+  assert.equal((await db.query(`SELECT count(*)::int AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`)).rows[0].count, 11);
 
   const password = "Phase4B-Password-Only";
   const passwordHash = await bcrypt.hash(password, 8);
@@ -586,6 +587,16 @@ async function main() {
   assert.equal(String(persistedSale.totalAmount), "3001.00");
   assert.equal(String(persistedSale.advancePayment), "500.50");
   assert.equal(persistedSale.snapshot_name, staffSale.entered.fullName);
+  const duplicateBillCheck = await callAction(
+    manifest,
+    "src/app/(app)/sales/actions.ts",
+    "checkSaleCustomerRecords",
+    [staffSale.entered],
+    staffLogin.jar,
+  );
+  assert.equal(duplicateBillCheck.response.status, 200);
+  assert.equal(duplicateBillCheck.value?.success, true);
+  assert.equal(duplicateBillCheck.value?.billNumberTaken, true);
   assert.equal(
     (await db.query(`SELECT "stockQuantity" FROM "Product" WHERE id=$1`, [standardProductId])).rows[0].stockQuantity,
     3,

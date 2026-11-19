@@ -15,6 +15,11 @@ import {
 import type { CustomerRecordCheckResult } from "../actions";
 import { CustomerRecordCheckDialog } from "./customer-record-check-dialog";
 import type { RecordChoice } from "./customer-record-check-dialog";
+import {
+  sanitizeSaleBillNumberInput,
+  validateSaleRecordCheck,
+  type SaleRecordCheckField,
+} from "../_lib/record-check-validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,7 +49,6 @@ type ProductBrandOption = {
   brandName: string;
   price: string;
   stockQuantity: number;
-  warrantyMonths: number | null;
 };
 
 type ProductOption = {
@@ -52,7 +56,6 @@ type ProductOption = {
   name: string;
   price: string;
   stockQuantity: number;
-  warrantyMonths: number | null;
   productBrands: ProductBrandOption[];
 };
 
@@ -65,7 +68,6 @@ type SelectedSaleItem = {
   quantity: number;
   unitPrice: string;
   stockQuantity: number;
-  warrantyMonths: number | null;
 };
 
 type EmployeeOption = {
@@ -170,16 +172,29 @@ export function SaleForm({ products, employees }: SaleFormProps) {
   const [selectedItems, setSelectedItems] = useState<SelectedSaleItem[]>([]);
   const [advancePayment, setAdvancePayment] = useState("0");
   const [monthlyInstallmentAmount, setMonthlyInstallmentAmount] = useState("0");
+  const [checkFieldErrors, setCheckFieldErrors] = useState<
+    Partial<Record<SaleRecordCheckField, string>>
+  >({});
 
+  const recordCheckValues = {
+    billNumber,
+    fullName: customerName,
+    address: customerAddress,
+    nic: customerNic,
+    mobile: customerMobile,
+    additionalMobile: customerAdditionalMobile,
+  };
   const canCheckRecord =
-    billNumber.trim().length > 0 &&
-    /^[A-Za-z0-9/-]{1,50}$/.test(billNumber.trim()) &&
-    customerName.trim().length >= 2 &&
-    customerAddress.trim().length >= 3 &&
-    /^[A-Za-z0-9-]{5,20}$/.test(customerNic.trim()) &&
-    /^[0-9]{7,10}$/.test(customerMobile) &&
-    (customerAdditionalMobile === "" ||
-      /^[0-9]{7,10}$/.test(customerAdditionalMobile));
+    Object.keys(validateSaleRecordCheck(recordCheckValues)).length === 0;
+
+  function clearCheckFieldError(field: SaleRecordCheckField) {
+    setCheckFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
 
   function invalidateVerification() {
     requestVersion.current += 1;
@@ -191,7 +206,18 @@ export function SaleForm({ products, employees }: SaleFormProps) {
   }
 
   async function handleCheckRecord() {
-    if (!canCheckRecord || checkingRecord) return;
+    if (checkingRecord) return;
+    const errors = validateSaleRecordCheck(recordCheckValues);
+    setCheckFieldErrors(errors);
+    const firstInvalidField = Object.keys(errors)[0] as
+      | SaleRecordCheckField
+      | undefined;
+    if (firstInvalidField) {
+      requestAnimationFrame(() =>
+        document.getElementById(firstInvalidField)?.focus(),
+      );
+      return;
+    }
     const version = ++requestVersion.current;
     setCheckingRecord(true);
     setCheckError("");
@@ -256,6 +282,7 @@ export function SaleForm({ products, employees }: SaleFormProps) {
       setSelectedCustomerId(choice.customerId);
       setVerificationToken(confirmation.token);
       setRecordVerified(true);
+      setCheckFieldErrors({});
       setCheckResult(null);
     } catch {
       if (version === requestVersion.current) {
@@ -423,9 +450,6 @@ export function SaleForm({ products, employees }: SaleFormProps) {
           quantity,
           unitPrice: price.toFixed(2),
           stockQuantity: draftStockQuantity,
-          warrantyMonths: brand
-            ? brand.warrantyMonths
-            : selectedProduct.warrantyMonths,
         },
       ]);
     }
@@ -525,46 +549,50 @@ export function SaleForm({ products, employees }: SaleFormProps) {
         <div className="min-w-0 space-y-4">
           {/* Customer and bill information */}
           <Card className="border-border/70 shadow-sm">
-            <CardContent className="space-y-4 p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardContent className="space-y-4 px-4 py-3 sm:px-5 sm:py-3.5">
+              <div>
                 <FormSectionTitle
                   icon={UserRound}
                   title="Customer & Bill Information"
                   description="Enter the customer's details and sale reference."
                 />
-                <Button
-                  type="button"
-                  disabled={!canCheckRecord || checkingRecord || isPending}
-                  className="gap-2 font-semibold"
-                  onClick={handleCheckRecord}
-                >
-                  <CheckCircle2 className="size-4" />
-                  {checkingRecord
-                    ? "Checking records..."
-                    : recordVerified
-                      ? "Recheck Record"
-                      : "Check Record"}
-                </Button>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <FormField label="Bill Number" htmlFor="billNumber" required>
+                <FormField
+                  label="Bill Number"
+                  htmlFor="billNumber"
+                  required
+                  error={checkFieldErrors.billNumber}
+                >
                   <AppInput
                     id="billNumber"
                     value={billNumber}
                     name="billNumber"
-                    placeholder="e.g. BILL-2026-001"
-                    maxLength={50}
+                    placeholder="e.g. 0001"
+                    maxLength={4}
+                    minLength={4}
+                    inputMode="numeric"
+                    pattern="[0-9]{4}"
+                    aria-invalid={Boolean(checkFieldErrors.billNumber)}
                     className="font-semibold tracking-wide"
                     required
                     onChange={(event) => {
                       invalidateVerification();
-                      setBillNumber(event.target.value);
+                      clearCheckFieldError("billNumber");
+                      setBillNumber(
+                        sanitizeSaleBillNumberInput(event.target.value),
+                      );
                     }}
                   />
                 </FormField>
 
-                <FormField label="Customer Name" htmlFor="fullName" required>
+                <FormField
+                  label="Customer Name"
+                  htmlFor="fullName"
+                  required
+                  error={checkFieldErrors.fullName}
+                >
                   <AppInput
                     id="fullName"
                     value={customerName}
@@ -574,14 +602,21 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                     maxLength={150}
                     autoComplete="name"
                     required
+                    aria-invalid={Boolean(checkFieldErrors.fullName)}
                     onChange={(event) => {
                       invalidateVerification();
+                      clearCheckFieldError("fullName");
                       setCustomerName(event.target.value);
                     }}
                   />
                 </FormField>
 
-                <FormField label="Address" htmlFor="address" required>
+                <FormField
+                  label="Address"
+                  htmlFor="address"
+                  required
+                  error={checkFieldErrors.address}
+                >
                   <AppInput
                     id="address"
                     value={customerAddress}
@@ -591,14 +626,21 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                     maxLength={500}
                     autoComplete="street-address"
                     required
+                    aria-invalid={Boolean(checkFieldErrors.address)}
                     onChange={(event) => {
                       invalidateVerification();
+                      clearCheckFieldError("address");
                       setCustomerAddress(event.target.value);
                     }}
                   />
                 </FormField>
 
-                <FormField label="NIC Number" htmlFor="nic" required>
+                <FormField
+                  label="NIC Number"
+                  htmlFor="nic"
+                  required
+                  error={checkFieldErrors.nic}
+                >
                   <AppInput
                     id="nic"
                     value={customerNic}
@@ -610,8 +652,10 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                     inputMode="numeric"
                     autoComplete="off"
                     required
+                    aria-invalid={Boolean(checkFieldErrors.nic)}
                     onChange={(event) => {
                       invalidateVerification();
+                      clearCheckFieldError("nic");
                       setCustomerNic(
                         event.target.value.replace(/\D/g, "").slice(0, 12),
                       );
@@ -619,7 +663,12 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                   />
                 </FormField>
 
-                <FormField label="Primary Mobile" htmlFor="mobile" required>
+                <FormField
+                  label="Primary Mobile"
+                  htmlFor="mobile"
+                  required
+                  error={checkFieldErrors.mobile}
+                >
                   <AppInput
                     id="mobile"
                     value={customerMobile}
@@ -631,15 +680,21 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                     minLength={10}
                     maxLength={10}
                     autoComplete="tel"
+                    aria-invalid={Boolean(checkFieldErrors.mobile)}
                     onChange={(event) => {
                       invalidateVerification();
+                      clearCheckFieldError("mobile");
                       setCustomerMobile(event.target.value.replace(/\D/g, ""));
                     }}
                     required
                   />
                 </FormField>
 
-                <FormField label="Additional Mobile" htmlFor="additionalMobile">
+                <FormField
+                  label="Additional Mobile"
+                  htmlFor="additionalMobile"
+                  error={checkFieldErrors.additionalMobile}
+                >
                   <AppInput
                     id="additionalMobile"
                     value={customerAdditionalMobile}
@@ -651,8 +706,10 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                     minLength={10}
                     maxLength={15}
                     autoComplete="tel"
+                    aria-invalid={Boolean(checkFieldErrors.additionalMobile)}
                     onChange={(event) => {
                       invalidateVerification();
+                      clearCheckFieldError("additionalMobile");
                       setCustomerAdditionalMobile(
                         event.target.value.replace(/\D/g, "").slice(0, 15),
                       );
@@ -660,12 +717,27 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                   />
                 </FormField>
               </div>
+              <div className="flex justify-end border-t border-border/60 pt-3">
+                <Button
+                  type="button"
+                  disabled={checkingRecord || isPending}
+                  className="gap-2 bg-emerald-600 font-semibold text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                  onClick={handleCheckRecord}
+                >
+                  <CheckCircle2 className="size-4" />
+                  {checkingRecord
+                    ? "Checking records..."
+                    : recordVerified
+                      ? "Recheck Record"
+                      : "Check Record"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
           {/* Product selection */}
           <Card className="border-border/70 shadow-sm">
-            <CardContent className="space-y-4 p-4 sm:p-5">
+            <CardContent className="space-y-4 px-4 py-3 sm:px-5 sm:py-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <FormSectionTitle
                   icon={ShoppingBag}
@@ -788,28 +860,7 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                   </div>
 
                   {selectedProduct && (
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                        <span>
-                          Available stock:{" "}
-                          <strong className="font-semibold text-foreground">
-                            {draftStockQuantity ?? "Select a brand"}
-                          </strong>
-                        </span>
-                        {selectedProductBrand?.warrantyMonths != null && (
-                          <span>
-                            Warranty: {selectedProductBrand.warrantyMonths}{" "}
-                            months
-                          </span>
-                        )}
-                        {selectedProduct.productBrands.length === 0 &&
-                          selectedProduct.warrantyMonths != null && (
-                            <span>
-                              Warranty: {selectedProduct.warrantyMonths} months
-                            </span>
-                          )}
-                      </div>
-
+                    <div className="mt-3 flex justify-end border-t border-border/60 pt-3">
                       <Button
                         type="button"
                         size="sm"
@@ -862,12 +913,7 @@ export function SaleForm({ products, employees }: SaleFormProps) {
                             {item.productName}
                           </p>
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {item.brandName || null}{" "}
-                            {item.warrantyMonths != null
-                              ? ` · ${item.warrantyMonths} month warranty`
-                              : ""}
-                            {" · Stock "}
-                            {item.stockQuantity}
+                            {item.brandName || "Standard product"}
                           </p>
                         </div>
 
@@ -968,7 +1014,7 @@ export function SaleForm({ products, employees }: SaleFormProps) {
 
           {/* Payment and schedule */}
           <Card className="border-border/70 shadow-sm">
-            <CardContent className="space-y-4 p-4 sm:p-5">
+            <CardContent className="space-y-4 px-4 py-3 sm:px-5 sm:py-3.5">
               <FormSectionTitle
                 icon={Wallet}
                 title="Payment Plan"
@@ -1110,7 +1156,7 @@ export function SaleForm({ products, employees }: SaleFormProps) {
 
           {/* Dispatch and collection details */}
           <Card className="border-border/70 shadow-sm">
-            <CardContent className="space-y-4 p-4 sm:p-5">
+            <CardContent className="space-y-4 px-4 py-3 sm:px-5 sm:py-3.5">
               <FormSectionTitle
                 icon={ReceiptText}
                 title="Sale & Collection Details"
@@ -1215,7 +1261,7 @@ export function SaleForm({ products, employees }: SaleFormProps) {
               </div>
             </div>
 
-            <CardContent className="space-y-3.5 p-4">
+            <CardContent className="space-y-3.5 px-4 py-3.5">
               <div className="space-y-2.5">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">

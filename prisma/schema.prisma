@@ -129,7 +129,6 @@ model Product {
   description    String?  @db.Text
   price          Decimal  @db.Decimal(12, 2)
   stockQuantity  Int      @default(0)
-  warrantyMonths Int?
   isActive       Boolean  @default(true)
   categoryId     String
   createdAt      DateTime @default(now())
@@ -146,7 +145,6 @@ model ProductBrand {
   brandId        String
   price          Decimal  @db.Decimal(12, 2)
   stockQuantity  Int      @default(0)
-  warrantyMonths Int?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
