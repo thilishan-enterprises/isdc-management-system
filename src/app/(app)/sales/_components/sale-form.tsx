@@ -11,8 +11,8 @@ import {
   checkSaleCustomerRecords,
   confirmSaleCustomerRecord,
   createSaleRegistration,
-} from "./actions";
-import type { CustomerRecordCheckResult } from "./actions";
+} from "../actions";
+import type { CustomerRecordCheckResult } from "../actions";
 import { CustomerRecordCheckDialog } from "./customer-record-check-dialog";
 import type { RecordChoice } from "./customer-record-check-dialog";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ type EmployeeOption = {
   fullName: string;
 };
 
-type CustomerFormProps = {
+type SaleFormProps = {
   products: ProductOption[];
   employees: EmployeeOption[];
   today: string;
@@ -136,7 +136,7 @@ function SummaryRow({
   );
 }
 
-export function CustomerForm({ products, employees }: CustomerFormProps) {
+export function SaleForm({ products, employees }: SaleFormProps) {
   const [formState, formAction, isPending] = useActionState(
     createSaleRegistration,
     {},

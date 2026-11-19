@@ -48,7 +48,7 @@ export const navigationGroups: readonly NavigationGroup[] = [
     items: [
       {
         title: "Add New Sale",
-        href: "/customers/register",
+        href: "/sales/new",
         icon: BadgePlus,
         allowedRoles: ALL_ROLES,
       },

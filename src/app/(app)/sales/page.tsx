@@ -555,7 +555,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         description="Manage registered sales, customer records, installment schedules and payment balances."
         actions={
           <Link
-            href="/customers/register"
+            href="/sales/new"
             className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <Plus className="size-4" />

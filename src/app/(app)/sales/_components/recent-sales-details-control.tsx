@@ -43,3 +43,4 @@ export function RecentSalesDetailsControl({
     </div>
   );
 }
+

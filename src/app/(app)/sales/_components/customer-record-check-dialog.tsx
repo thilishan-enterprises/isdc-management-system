@@ -6,7 +6,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import type {
   CustomerRecordCheckResult,
   CustomerRecordDetails,
-} from "./actions";
+} from "../actions";
 
 export type RecordChoice = {
   customerId: string | null;

@@ -18,7 +18,7 @@ const appHeaderRoutes: ReadonlyArray<AppHeaderMetadata & { path: string }> = [
     subtitle: "Validate and import customer records from Excel or CSV files.",
   },
   {
-    path: "/customers/register",
+    path: "/sales/new",
     title: "New Sale Registration",
     subtitle:
       "Register a customer purchase and configure its installment plan.",
